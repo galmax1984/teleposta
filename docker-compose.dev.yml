@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  # MySQL Database
+  database:
+    image: mysql:8.0
+    container_name: teleposta-db-dev
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: password
+      MYSQL_DATABASE: teleposta
+      MYSQL_USER: ui_poster
+      MYSQL_PASSWORD: password
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data_dev:/var/lib/mysql
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - teleposta-network-dev
+
+  # NestJS API Server (Development)
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile.server
+    container_name: ui-poster-server-dev
+    restart: unless-stopped
+    environment:
+      DB_HOST: database
+      DB_PORT: 3306
+      DB_USER: ui_poster
+      DB_PASSWORD: password
+      DB_NAME: ui_poster
+      NODE_ENV: development
+    ports:
+      - "3001:3001"
+    depends_on:
+      - database
+    volumes:
+      - ./server:/app/server
+      - ./package.json:/app/package.json
+      - ./tsconfig.json:/app/tsconfig.json
+    networks:
+      - teleposta-network-dev
+    command: ["pnpm", "run", "dev:server"]
+
+volumes:
+  mysql_data_dev:
+
+networks:
+  teleposta-network-dev:
+    driver: bridge

@@ -1,0 +1,119 @@
+/** @import must precede all other statements */
+/* Inter font */
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
+
+/* Tailwind CSS directives */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  /**
+   * Tailwind CSS theme
+   * tailwind.config.ts expects the following color variables to be expressed as HSL values.
+   * A different format will require also updating the theme in tailwind.config.ts.
+  */
+  
+  * {
+    letter-spacing: 0.02em; /* Slightly increased letter spacing for Cal Sans */
+    font-weight: 400; /* Ensure normal weight by default */
+  }
+  
+  :root {
+    --background: 8 11% 73%;
+    --foreground: 44 30% 9%;
+
+    --card: 40 4% 53%;
+    --card-foreground: 40 11% 81%;
+
+    --popover: 40 4% 53%;
+    --popover-foreground: 40 11% 81%;
+
+    --primary: 73 100% 50%;
+    --primary-foreground: 44 30% 9%;
+
+    --secondary: 40 4% 58%;
+    --secondary-foreground: 40 11% 81%;
+
+    --muted: 40 4% 55%;
+    --muted-foreground: 40 11% 75%;
+
+    --accent: 73 100% 50%;
+    --accent-foreground: 44 30% 9%;
+
+    --destructive: 0 65% 51%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 40 4% 60%;
+    --input: 40 4% 55%;
+    --ring: 73 100% 50%;
+
+    --radius: 0rem;
+
+    --sidebar-background: 40 4% 53%;
+
+    --sidebar-foreground: 40 11% 81%;
+
+    --sidebar-primary: 73 100% 50%;
+
+    --sidebar-primary-foreground: 44 30% 9%;
+
+    --sidebar-accent: 73 100% 50%;
+
+    --sidebar-accent-foreground: 44 30% 9%;
+
+    --sidebar-border: 40 4% 60%;
+
+    --sidebar-ring: 73 100% 50%;
+  }
+
+  .dark {
+    --background: 8 11% 73%;
+    --foreground: 44 30% 9%;
+
+    --card: 40 4% 53%;
+    --card-foreground: 40 11% 81%;
+
+    --popover: 40 4% 53%;
+    --popover-foreground: 40 11% 81%;
+
+    --primary: 73 100% 50%;
+    --primary-foreground: 44 30% 9%;
+
+    --secondary: 40 4% 58%;
+    --secondary-foreground: 40 11% 81%;
+
+    --muted: 40 4% 55%;
+    --muted-foreground: 40 11% 75%;
+
+    --accent: 73 100% 50%;
+    --accent-foreground: 44 30% 9%;
+
+    --destructive: 0 65% 51%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 40 4% 60%;
+    --input: 40 4% 55%;
+    --ring: 73 100% 50%;
+
+    --sidebar-background: 40 4% 53%;
+    --sidebar-foreground: 40 11% 81%;
+    --sidebar-primary: 73 100% 50%;
+    --sidebar-primary-foreground: 44 30% 9%;
+    --sidebar-accent: 73 100% 50%;
+    --sidebar-accent-foreground: 44 30% 9%;
+    --sidebar-border: 40 4% 60%;
+    --sidebar-ring: 73 100% 50%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-weight: 400; /* Ensure body starts with normal weight */
+  }
+}
