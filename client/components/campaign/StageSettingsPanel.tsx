@@ -224,6 +224,16 @@ const SourceForm = ({ value, onChange }: FormProps<SourceStage["config"]>) => {
   const update = (patch: Partial<SourceStage["config"]>) =>
     onChange({ ...value, ...patch });
 
+  const updateGoogleSheets = (patch: Partial<SourceStage["config"]["googleSheets"]>) => {
+    const googleSheets = { ...value.googleSheets, ...patch };
+    update({ googleSheets });
+  };
+
+  const updateCredentials = (patch: Partial<SourceStage["config"]["googleSheets"]["credentials"]>) => {
+    const credentials = { ...value.googleSheets?.credentials, ...patch };
+    updateGoogleSheets({ credentials });
+  };
+
   return (
     <div className="flex flex-col gap-6">
       <section>
@@ -272,6 +282,132 @@ const SourceForm = ({ value, onChange }: FormProps<SourceStage["config"]>) => {
           </select>
         </label>
       </section>
+
+      {/* Google Sheets Configuration */}
+      {value.sourceType === "Spreadsheet" && (
+        <section className="grid gap-4">
+          <div className="border-t border-border/30 pt-4">
+            <h4 className="text-sm font-semibold text-foreground mb-4">Google Sheets Configuration</h4>
+            
+            {/* Service Account Credentials */}
+            <div className="grid gap-4">
+              <label className="flex flex-col text-sm text-foreground">
+                Service Account Email
+                <input
+                  value={value.googleSheets?.credentials?.client_email || ""}
+                  onChange={(event) => updateCredentials({ client_email: event.target.value })}
+                  placeholder="your-service-account@project.iam.gserviceaccount.com"
+                  className="mt-2 border border-border/70 bg-stage-inactive px-4 py-3 text-sm text-foreground placeholder:text-foreground/40 focus:border-border focus:outline-none focus:ring-0"
+                />
+              </label>
+
+              <label className="flex flex-col text-sm text-foreground">
+                Private Key
+                <textarea
+                  value={value.googleSheets?.credentials?.private_key || ""}
+                  onChange={(event) => updateCredentials({ private_key: event.target.value })}
+                  placeholder="-----BEGIN PRIVATE KEY-----\nYour private key here...\n-----END PRIVATE KEY-----"
+                  rows={4}
+                  className="mt-2 border border-border/70 bg-stage-inactive px-4 py-3 text-sm text-foreground placeholder:text-foreground/40 focus:border-border focus:outline-none focus:ring-0 resize-none"
+                />
+              </label>
+
+              <label className="flex flex-col text-sm text-foreground">
+                Project ID
+                <input
+                  value={value.googleSheets?.credentials?.project_id || ""}
+                  onChange={(event) => updateCredentials({ project_id: event.target.value })}
+                  placeholder="your-project-id"
+                  className="mt-2 border border-border/70 bg-stage-inactive px-4 py-3 text-sm text-foreground placeholder:text-foreground/40 focus:border-border focus:outline-none focus:ring-0"
+                />
+              </label>
+            </div>
+
+            {/* Spreadsheet Configuration */}
+            <div className="grid gap-4 mt-6">
+              <label className="flex flex-col text-sm text-foreground">
+                Spreadsheet ID
+                <input
+                  value={value.googleSheets?.spreadsheetId || ""}
+                  onChange={(event) => updateGoogleSheets({ spreadsheetId: event.target.value })}
+                  placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms"
+                  className="mt-2 border border-border/70 bg-stage-inactive px-4 py-3 text-sm text-foreground placeholder:text-foreground/40 focus:border-border focus:outline-none focus:ring-0"
+                />
+                <p className="mt-1 text-xs text-foreground/60">
+                  Found in the spreadsheet URL: docs.google.com/spreadsheets/d/[SPREADSHEET_ID]/edit
+                </p>
+              </label>
+
+              <label className="flex flex-col text-sm text-foreground">
+                Sheet Name
+                <input
+                  value={value.googleSheets?.sheetName || ""}
+                  onChange={(event) => updateGoogleSheets({ sheetName: event.target.value })}
+                  placeholder="Sheet1"
+                  className="mt-2 border border-border/70 bg-stage-inactive px-4 py-3 text-sm text-foreground placeholder:text-foreground/40 focus:border-border focus:outline-none focus:ring-0"
+                />
+              </label>
+
+              <label className="flex flex-col text-sm text-foreground">
+                Range (Optional)
+                <input
+                  value={value.googleSheets?.range || ""}
+                  onChange={(event) => updateGoogleSheets({ range: event.target.value })}
+                  placeholder="A1:Z100"
+                  className="mt-2 border border-border/70 bg-stage-inactive px-4 py-3 text-sm text-foreground placeholder:text-foreground/40 focus:border-border focus:outline-none focus:ring-0"
+                />
+                <p className="mt-1 text-xs text-foreground/60">
+                  Leave empty to read the entire sheet
+                </p>
+              </label>
+            </div>
+
+            {/* Column Mapping */}
+            <div className="grid gap-4 mt-6">
+              <h5 className="text-sm font-semibold text-foreground">Column Mapping</h5>
+              
+              <label className="flex flex-col text-sm text-foreground">
+                Content Column
+                <input
+                  value={value.googleSheets?.contentColumn || ""}
+                  onChange={(event) => updateGoogleSheets({ contentColumn: event.target.value })}
+                  placeholder="A or Content"
+                  className="mt-2 border border-border/70 bg-stage-inactive px-4 py-3 text-sm text-foreground placeholder:text-foreground/40 focus:border-border focus:outline-none focus:ring-0"
+                />
+                <p className="mt-1 text-xs text-foreground/60">
+                  Column letter (A, B, C) or column name containing the post content
+                </p>
+              </label>
+
+              <label className="flex flex-col text-sm text-foreground">
+                Image Column (Optional)
+                <input
+                  value={value.googleSheets?.imageColumn || ""}
+                  onChange={(event) => updateGoogleSheets({ imageColumn: event.target.value })}
+                  placeholder="B or Image"
+                  className="mt-2 border border-border/70 bg-stage-inactive px-4 py-3 text-sm text-foreground placeholder:text-foreground/40 focus:border-border focus:outline-none focus:ring-0"
+                />
+                <p className="mt-1 text-xs text-foreground/60">
+                  Column containing image URLs (optional)
+                </p>
+              </label>
+
+              <label className="flex flex-col text-sm text-foreground">
+                Metadata Column (Optional)
+                <input
+                  value={value.googleSheets?.metadataColumn || ""}
+                  onChange={(event) => updateGoogleSheets({ metadataColumn: event.target.value })}
+                  placeholder="C or Metadata"
+                  className="mt-2 border border-border/70 bg-stage-inactive px-4 py-3 text-sm text-foreground placeholder:text-foreground/40 focus:border-border focus:outline-none focus:ring-0"
+                />
+                <p className="mt-1 text-xs text-foreground/60">
+                  Column containing additional metadata as JSON (optional)
+                </p>
+              </label>
+            </div>
+          </div>
+        </section>
+      )}
     </div>
   );
 };
