@@ -142,6 +142,33 @@ export class GoogleSheetsService {
     }
   }
 
+  // Read a single column's values (default: column A). Skips the header row.
+  async getColumnValues(params: {
+    spreadsheetId: string;
+    sheetName: string;
+    column?: string; // e.g., "A"
+    skipHeader?: boolean; // default true
+  }): Promise<string[]> {
+    const columnLetter = (params.column || 'A').toUpperCase();
+    const skipHeader = params.skipHeader !== undefined ? params.skipHeader : true;
+    try {
+      const range = `${params.sheetName}!${columnLetter}:${columnLetter}`;
+      const response = await this.sheets.spreadsheets.values.get({
+        spreadsheetId: params.spreadsheetId,
+        range,
+      });
+
+      const rows: string[][] = response.data.values || [];
+      if (rows.length === 0) return [];
+
+      // Optionally skip header row and flatten values
+      const dataRows = skipHeader && rows.length > 1 ? rows.slice(1) : rows;
+      return dataRows.map((row) => (row && row[0] ? String(row[0]) : ''));
+    } catch (error) {
+      throw new Error(`Failed to get column ${columnLetter} values: ${error}`);
+    }
+  }
+
   private findColumnIndex(headers: string[], columnName: string): number {
     // Try exact match first
     let index = headers.findIndex(header => header === columnName);
