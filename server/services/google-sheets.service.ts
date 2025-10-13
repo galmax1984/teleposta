@@ -1,0 +1,191 @@
+import { google } from 'googleapis';
+
+export interface GoogleSheetsCredentials {
+  client_email: string;
+  private_key: string;
+  project_id: string;
+  api_key?: string;
+}
+
+export interface GoogleSheetsConfig {
+  credentials: GoogleSheetsCredentials;
+  spreadsheetId: string;
+  sheetName: string;
+  range?: string;
+  contentColumn: string;
+  imageColumn?: string;
+  metadataColumn?: string;
+}
+
+export interface SheetRow {
+  id: string;
+  content: string;
+  imageUrl?: string;
+  metadata?: Record<string, any>;
+  rowNumber: number;
+}
+
+export class GoogleSheetsService {
+  private sheets: any;
+  private auth: any;
+  private apiKey?: string;
+
+  constructor(credentials: GoogleSheetsCredentials) {
+    // Store API key but don't use it for OAuth2 authentication
+    this.apiKey = credentials.api_key;
+    
+    // Fix private key formatting
+    let privateKey = credentials.private_key;
+    
+    // If the private key is missing line breaks entirely, add them
+    if (privateKey.includes('-----BEGIN PRIVATE KEY-----') && !privateKey.includes('\n')) {
+      // Add newlines after BEGIN and before END markers
+      privateKey = privateKey.replace('-----BEGIN PRIVATE KEY-----', '-----BEGIN PRIVATE KEY-----\n');
+      privateKey = privateKey.replace('-----END PRIVATE KEY-----', '\n-----END PRIVATE KEY-----');
+      
+      // Add newlines every 64 characters in the key content
+      const beginMarker = '-----BEGIN PRIVATE KEY-----\n';
+      const endMarker = '\n-----END PRIVATE KEY-----';
+      const keyContent = privateKey.substring(beginMarker.length, privateKey.length - endMarker.length);
+      
+      // Split the key content into 64-character lines
+      const lines = [];
+      for (let i = 0; i < keyContent.length; i += 64) {
+        lines.push(keyContent.substring(i, i + 64));
+      }
+      
+      privateKey = beginMarker + lines.join('\n') + endMarker;
+    }
+    
+    this.auth = new google.auth.JWT({
+      email: credentials.client_email,
+      key: privateKey,
+      scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'],
+    });
+    
+    // Create sheets client with OAuth2 auth only
+    this.sheets = google.sheets({ 
+      version: 'v4', 
+      auth: this.auth
+    });
+  }
+
+  async testConnection(spreadsheetId: string): Promise<{ success: boolean; message: string }> {
+    try {
+      // Use OAuth2 authentication only - no API key needed
+      await this.sheets.spreadsheets.get({
+        spreadsheetId,
+      });
+      return { success: true, message: 'Connection successful.' };
+    } catch (error: any) {
+      console.error('Google Sheets connection error:', error);
+      return { 
+        success: false, 
+        message: error.message || 'Connection failed' 
+      };
+    }
+  }
+
+  async getSpreadsheetInfo(spreadsheetId: string): Promise<any> {
+    try {
+      const response = await this.sheets.spreadsheets.get({
+        spreadsheetId,
+      });
+      return {
+        title: response.data.properties.title,
+        sheets: response.data.sheets.map((sheet: any) => ({
+          title: sheet.properties.title,
+          sheetId: sheet.properties.sheetId,
+        })),
+      };
+    } catch (error) {
+      throw new Error(`Failed to get spreadsheet info: ${error}`);
+    }
+  }
+
+  async getSheetData(config: GoogleSheetsConfig): Promise<SheetRow[]> {
+    try {
+      const range = config.range || `${config.sheetName}!A:Z`;
+      
+      const response = await this.sheets.spreadsheets.values.get({
+        spreadsheetId: config.spreadsheetId,
+        range,
+      });
+
+      const rows = response.data.values;
+      if (!rows || rows.length === 0) {
+        return [];
+      }
+
+      // First row is headers
+      const headers = rows[0];
+      const dataRows = rows.slice(1);
+
+      // Find column indices
+      const contentIndex = this.findColumnIndex(headers, config.contentColumn);
+      const imageIndex = config.imageColumn ? this.findColumnIndex(headers, config.imageColumn) : -1;
+      const metadataIndex = config.metadataColumn ? this.findColumnIndex(headers, config.metadataColumn) : -1;
+
+      if (contentIndex === -1) {
+        throw new Error(`Content column "${config.contentColumn}" not found`);
+      }
+
+      return dataRows.map((row: string[], index: number) => ({
+        id: `row-${index + 2}`, // +2 for header row and 0-based index
+        content: row[contentIndex] || '',
+        imageUrl: imageIndex >= 0 ? row[imageIndex] : undefined,
+        metadata: metadataIndex >= 0 ? this.parseMetadata(row[metadataIndex]) : {},
+        rowNumber: index + 2,
+      }));
+    } catch (error) {
+      throw new Error(`Failed to get sheet data: ${error}`);
+    }
+  }
+
+  private findColumnIndex(headers: string[], columnName: string): number {
+    // Try exact match first
+    let index = headers.findIndex(header => header === columnName);
+    if (index !== -1) return index;
+
+    // Try case-insensitive match
+    index = headers.findIndex(header => 
+      header.toLowerCase() === columnName.toLowerCase()
+    );
+    if (index !== -1) return index;
+
+    // Try column letter (A, B, C, etc.)
+    if (/^[A-Z]+$/i.test(columnName)) {
+      return this.columnLetterToIndex(columnName);
+    }
+
+    return -1;
+  }
+
+  private columnLetterToIndex(columnLetter: string): number {
+    let index = 0;
+    for (let i = 0; i < columnLetter.length; i++) {
+      index = index * 26 + (columnLetter.charCodeAt(i) - 64);
+    }
+    return index - 1; // Convert to 0-based index
+  }
+
+  private parseMetadata(metadataString: string): Record<string, any> {
+    try {
+      return JSON.parse(metadataString);
+    } catch {
+      // If not valid JSON, return as simple object
+      return { raw: metadataString };
+    }
+  }
+
+  async validateSpreadsheetAccess(spreadsheetId: string): Promise<boolean> {
+    try {
+      await this.sheets.spreadsheets.get({
+        spreadsheetId,
+      });
+      return true;
+    } catch (error) {
+      return false;
+    }
+  }
+}

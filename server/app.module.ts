@@ -4,6 +4,7 @@ import { CampaignsModule } from './campaigns/campaigns.module';
 import { LogsModule } from './logs/logs.module';
 import { SettingsModule } from './settings/settings.module';
 import { DatabaseModule } from './database/database.module';
+import { GoogleSheetsModule } from './google-sheets/google-sheets.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { DatabaseModule } from './database/database.module';
     CampaignsModule,
     LogsModule,
     SettingsModule,
+    GoogleSheetsModule,
   ],
 })
 export class AppModule {}

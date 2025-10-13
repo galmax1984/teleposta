@@ -33,6 +33,30 @@ export interface SourceStage extends StageBase {
     sourceType: SourceOption;
     datasetName: string;
     syncMode: SyncMode;
+    // Google Sheets specific configuration
+    googleSheets?: {
+      credentials: {
+        client_email: string;
+        private_key: string;
+        project_id: string;
+        api_key?: string;
+      };
+      spreadsheetId: string;
+      sheetName: string;
+      range?: string;
+      contentColumn: string;
+      imageColumn?: string;
+      metadataColumn?: string;
+    };
+    // Airtable specific configuration
+    airtable?: {
+      apiKey: string;
+      baseId: string;
+      tableId: string;
+      contentField: string;
+      imageField?: string;
+      metadataField?: string;
+    };
   };
 }
 
@@ -126,7 +150,31 @@ export const getNextStageType = (stages: Stage[]): StageType | null => {
 export const isStageConfigComplete = (stage: Stage): boolean => {
   switch (stage.type) {
     case "source":
-      return Boolean(stage.config.datasetName?.trim()?.length > 0);
+      const hasDatasetName = Boolean(stage.config.datasetName?.trim()?.length > 0);
+      
+      // If Spreadsheet is selected, validate Google Sheets configuration
+      if (stage.config.sourceType === "Spreadsheet") {
+        const googleSheets = stage.config.googleSheets;
+        if (!googleSheets) return false;
+        
+        const hasCredentials = Boolean(
+          googleSheets.credentials?.client_email?.trim() &&
+          googleSheets.credentials?.private_key?.trim() &&
+          googleSheets.credentials?.project_id?.trim()
+        );
+        
+        const hasSpreadsheetConfig = Boolean(
+          googleSheets.spreadsheetId?.trim() &&
+          googleSheets.sheetName?.trim() &&
+          googleSheets.contentColumn?.trim()
+        );
+        
+        return hasDatasetName && hasCredentials && hasSpreadsheetConfig;
+      }
+      
+      // For Airtable, basic validation (can be extended later)
+      return hasDatasetName;
+      
     case "scheduler":
       return Boolean(stage.config.timezone?.trim()?.length > 0) && Boolean(stage.config.cadence);
     case "target":
