@@ -39,6 +39,7 @@ export interface SourceStage extends StageBase {
         client_email: string;
         private_key: string;
         project_id: string;
+        api_key?: string;
       };
       spreadsheetId: string;
       sheetName: string;

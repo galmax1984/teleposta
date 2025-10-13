@@ -1,16 +1,15 @@
-import { Controller, Post, Body, Get, Query } from '@nestjs/common';
+import { Controller, Post, Body, Get, Query, Options } from '@nestjs/common';
 import { GoogleSheetsService, GoogleSheetsCredentials, GoogleSheetsConfig } from '../services/google-sheets.service';
 
 @Controller('api/google-sheets')
 export class GoogleSheetsController {
-  constructor(private readonly googleSheetsService: GoogleSheetsService) {}
 
   @Post('test-connection')
-  async testConnection(@Body() credentials: GoogleSheetsCredentials) {
+  async testConnection(@Body() body: { credentials: GoogleSheetsCredentials; spreadsheetId: string }) {
     try {
-      const service = new GoogleSheetsService(credentials);
-      const isValid = await service.testConnection();
-      return { success: isValid, message: isValid ? 'Connection successful' : 'Connection failed' };
+      const service = new GoogleSheetsService(body.credentials);
+      const result = await service.testConnection(body.spreadsheetId);
+      return result;
     } catch (error) {
       return { success: false, message: `Connection error: ${error.message}` };
     }

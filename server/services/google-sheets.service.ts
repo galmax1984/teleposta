@@ -4,6 +4,7 @@ export interface GoogleSheetsCredentials {
   client_email: string;
   private_key: string;
   project_id: string;
+  api_key?: string;
 }
 
 export interface GoogleSheetsConfig {
@@ -27,23 +28,61 @@ export interface SheetRow {
 export class GoogleSheetsService {
   private sheets: any;
   private auth: any;
+  private apiKey?: string;
 
   constructor(credentials: GoogleSheetsCredentials) {
-    this.auth = new google.auth.GoogleAuth({
-      credentials,
+    // Store API key but don't use it for OAuth2 authentication
+    this.apiKey = credentials.api_key;
+    
+    // Fix private key formatting
+    let privateKey = credentials.private_key;
+    
+    // If the private key is missing line breaks entirely, add them
+    if (privateKey.includes('-----BEGIN PRIVATE KEY-----') && !privateKey.includes('\n')) {
+      // Add newlines after BEGIN and before END markers
+      privateKey = privateKey.replace('-----BEGIN PRIVATE KEY-----', '-----BEGIN PRIVATE KEY-----\n');
+      privateKey = privateKey.replace('-----END PRIVATE KEY-----', '\n-----END PRIVATE KEY-----');
+      
+      // Add newlines every 64 characters in the key content
+      const beginMarker = '-----BEGIN PRIVATE KEY-----\n';
+      const endMarker = '\n-----END PRIVATE KEY-----';
+      const keyContent = privateKey.substring(beginMarker.length, privateKey.length - endMarker.length);
+      
+      // Split the key content into 64-character lines
+      const lines = [];
+      for (let i = 0; i < keyContent.length; i += 64) {
+        lines.push(keyContent.substring(i, i + 64));
+      }
+      
+      privateKey = beginMarker + lines.join('\n') + endMarker;
+    }
+    
+    this.auth = new google.auth.JWT({
+      email: credentials.client_email,
+      key: privateKey,
       scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'],
     });
-    this.sheets = google.sheets({ version: 'v4', auth: this.auth });
+    
+    // Create sheets client with OAuth2 auth only
+    this.sheets = google.sheets({ 
+      version: 'v4', 
+      auth: this.auth
+    });
   }
 
-  async testConnection(): Promise<boolean> {
+  async testConnection(spreadsheetId: string): Promise<{ success: boolean; message: string }> {
     try {
+      // Use OAuth2 authentication only - no API key needed
       await this.sheets.spreadsheets.get({
-        spreadsheetId: 'test',
+        spreadsheetId,
       });
-      return true;
-    } catch (error) {
-      return false;
+      return { success: true, message: 'Connection successful.' };
+    } catch (error: any) {
+      console.error('Google Sheets connection error:', error);
+      return { 
+        success: false, 
+        message: error.message || 'Connection failed' 
+      };
     }
   }
 
