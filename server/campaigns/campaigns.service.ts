@@ -1,5 +1,5 @@
 import { Injectable, Inject } from '@nestjs/common';
-import { eq, desc } from 'drizzle-orm';
+import { and, eq, desc } from 'drizzle-orm';
 import { db } from '../database/database';
 import { campaigns, logs, type Campaign, type NewCampaign } from '../database/schema';
 
@@ -50,6 +50,61 @@ export class CampaignsService {
   async update(id: number, updateCampaignDto: Partial<Campaign>): Promise<Campaign | null> {
     await this.database.update(campaigns).set(updateCampaignDto).where(eq(campaigns.id, id));
     return this.findOne(id);
+  }
+
+  async findByName(name: string): Promise<Campaign | null> {
+    const rows = await this.database.select().from(campaigns).where(eq(campaigns.name, name));
+    return rows[0] || null;
+  }
+
+  async saveStageByName(params: {
+    campaignName: string;
+    stage: any; // allow flexible payload; server decides what to persist
+  }): Promise<Campaign> {
+    const existing = await this.findByName(params.campaignName);
+
+    if (!existing) {
+      // Create a minimal campaign row, default configs
+      const inserted = await this.database.insert(campaigns).values({
+        name: params.campaignName,
+        description: null as any,
+        sourceType: 'Spreadsheet',
+        sourceConfig: {},
+        targetPlatform: 'Telegram',
+        targetConfig: {},
+        scheduleConfig: {},
+        status: 'inactive',
+      });
+
+      // Retrieve the created row
+      const created = await this.findByName(params.campaignName);
+      if (!created) throw new Error('Failed to create campaign');
+      return this.applyStageToCampaign(created.id, params.stage);
+    }
+
+    return this.applyStageToCampaign(existing.id, params.stage);
+  }
+
+  private async applyStageToCampaign(campaignId: number, stage: any): Promise<Campaign> {
+    // Persist based on stage.type
+    if (stage?.type === 'source') {
+      await this.update(campaignId, {
+        sourceType: String(stage.config?.sourceType || 'Spreadsheet'),
+        sourceConfig: stage.config || {},
+      } as Partial<Campaign>);
+    } else if (stage?.type === 'scheduler') {
+      await this.update(campaignId, {
+        scheduleConfig: stage.config || {},
+      } as Partial<Campaign>);
+    } else if (stage?.type === 'target') {
+      await this.update(campaignId, {
+        targetPlatform: String(stage.config?.channel || 'Telegram'),
+        targetConfig: stage.config || {},
+      } as Partial<Campaign>);
+    }
+
+    const updated = await this.findOne(campaignId);
+    return updated!;
   }
 
   async remove(id: number): Promise<boolean> {

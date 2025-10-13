@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { DatabaseModule } from '../database/database.module';
-import { CampaignsController } from './campaigns.controller.js';
-import { CampaignsService } from './campaigns.service.js';
+import { CampaignsController } from './campaigns.controller';
+import { CampaignsService } from './campaigns.service';
 
 @Module({
   imports: [DatabaseModule],
