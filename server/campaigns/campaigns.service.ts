@@ -11,8 +11,27 @@ export class CampaignsService {
     return this.database.select().from(campaigns);
   }
 
+  async findByName(name: string): Promise<Campaign | null> {
+    console.log("=== FIND BY NAME SERVICE CALLED ===");
+    console.log("Searching for campaign with name:", name);
+    console.log("Name type:", typeof name);
+    console.log("Name length:", name?.length);
+    
+    const result = await this.database.select().from(campaigns).where(eq(campaigns.name, name)).limit(1);
+    console.log("Database query result:", result);
+    console.log("Number of results:", result.length);
+    
+    if (result.length > 0) {
+      console.log("Found campaign:", { id: result[0].id, name: result[0].name });
+    } else {
+      console.log("No campaign found with name:", name);
+    }
+    
+    return result[0] || null;
+  }
+
   async findOne(id: number): Promise<Campaign | null> {
-    const result = await this.database.select().from(campaigns).where(eq(campaigns.id, id));
+    const result = await this.database.select().from(campaigns).where(eq(campaigns.id, id)).limit(1);
     return result[0] || null;
   }
 
@@ -50,11 +69,6 @@ export class CampaignsService {
   async update(id: number, updateCampaignDto: Partial<Campaign>): Promise<Campaign | null> {
     await this.database.update(campaigns).set(updateCampaignDto).where(eq(campaigns.id, id));
     return this.findOne(id);
-  }
-
-  async findByName(name: string): Promise<Campaign | null> {
-    const rows = await this.database.select().from(campaigns).where(eq(campaigns.name, name));
-    return rows[0] || null;
   }
 
   async saveStageByName(params: {
