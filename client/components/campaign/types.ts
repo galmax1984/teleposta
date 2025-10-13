@@ -150,8 +150,6 @@ export const getNextStageType = (stages: Stage[]): StageType | null => {
 export const isStageConfigComplete = (stage: Stage): boolean => {
   switch (stage.type) {
     case "source":
-      const hasDatasetName = Boolean(stage.config.datasetName?.trim()?.length > 0);
-      
       // If Spreadsheet is selected, validate Google Sheets configuration
       if (stage.config.sourceType === "Spreadsheet") {
         const googleSheets = stage.config.googleSheets;
@@ -160,20 +158,19 @@ export const isStageConfigComplete = (stage: Stage): boolean => {
         const hasCredentials = Boolean(
           googleSheets.credentials?.client_email?.trim() &&
           googleSheets.credentials?.private_key?.trim() &&
-          googleSheets.credentials?.project_id?.trim()
+          googleSheets.credentials?.project_id?.trim() &&
+          googleSheets.credentials?.api_key?.trim()
         );
-        
+
         const hasSpreadsheetConfig = Boolean(
           googleSheets.spreadsheetId?.trim() &&
-          googleSheets.sheetName?.trim() &&
-          googleSheets.contentColumn?.trim()
+          googleSheets.sheetName?.trim()
         );
-        
-        return hasDatasetName && hasCredentials && hasSpreadsheetConfig;
+        return hasCredentials && hasSpreadsheetConfig;
       }
       
       // For Airtable, basic validation (can be extended later)
-      return hasDatasetName;
+      return true;
       
     case "scheduler":
       return Boolean(stage.config.timezone?.trim()?.length > 0) && Boolean(stage.config.cadence);

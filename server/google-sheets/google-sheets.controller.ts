@@ -51,4 +51,29 @@ export class GoogleSheetsController {
       return { success: false, message: `Failed to get sheet data: ${error.message}` };
     }
   }
+
+  @Post('get-column')
+  async getColumn(
+    @Body()
+    body: {
+      credentials: GoogleSheetsCredentials;
+      spreadsheetId: string;
+      sheetName: string;
+      column?: string; // default A
+      skipHeader?: boolean; // default true
+    },
+  ) {
+    try {
+      const service = new GoogleSheetsService(body.credentials);
+      const values = await service.getColumnValues({
+        spreadsheetId: body.spreadsheetId,
+        sheetName: body.sheetName,
+        column: body.column ?? 'A',
+        skipHeader: body.skipHeader,
+      });
+      return { success: true, data: values };
+    } catch (error) {
+      return { success: false, message: `Failed to get column: ${error.message}` };
+    }
+  }
 }

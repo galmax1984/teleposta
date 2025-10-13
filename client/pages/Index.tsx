@@ -94,11 +94,27 @@ export default function Index() {
     }
   };
 
-  const handleSaveStage = (campaignId: string, stageId: string, nextStage: Stage) => {
+  const handleSaveStage = async (campaignId: string, stageId: string, nextStage: Stage) => {
     const normalizedStage: Stage = {
       ...nextStage,
       completed: isStageConfigComplete(nextStage),
     };
+
+    // Persist to backend: save stage by campaign name with full stage config
+    try {
+      const campaignName = campaigns.find(c => c.id === campaignId)?.name || "Campaign";
+      await fetch("http://localhost:3001/api/campaigns/save-stage", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          campaignName,
+          stage: normalizedStage,
+        }),
+      });
+    } catch (error) {
+      console.error("Failed to persist stage:", error);
+      toast.error("Failed to save stage to server");
+    }
 
     setCampaigns((previous) =>
       previous.map((campaign) => {
