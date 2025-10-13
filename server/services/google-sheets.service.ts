@@ -37,6 +37,11 @@ export class GoogleSheetsService {
     // Fix private key formatting
     let privateKey = credentials.private_key;
     
+    // First, replace literal \n with actual newlines
+    if (privateKey.includes('\\n')) {
+      privateKey = privateKey.replace(/\\n/g, '\n');
+    }
+    
     // If the private key is missing line breaks entirely, add them
     if (privateKey.includes('-----BEGIN PRIVATE KEY-----') && !privateKey.includes('\n')) {
       // Add newlines after BEGIN and before END markers

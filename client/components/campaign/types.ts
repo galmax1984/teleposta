@@ -75,6 +75,14 @@ export interface TargetStage extends StageBase {
     channel: TargetOption;
     destination: string;
     autoPublish: AutoPublishWindow;
+    // Telegram Bot API settings (used when channel === 'Telegram')
+    telegram?: {
+      botToken: string;
+      chatIdOrUsername: string; // e.g. -1001234567890 or @mychannel
+      parseMode?: 'MarkdownV2' | 'HTML' | 'None';
+      disableWebPagePreview?: boolean;
+      messageThreadId?: string; // forums/topics
+    };
   };
 }
 
@@ -88,16 +96,18 @@ export interface Campaign {
   status?: "Pending" | "Active";
 }
 
-const createId = () =>
+export const createId = () =>
   typeof crypto !== "undefined" && "randomUUID" in crypto
     ? crypto.randomUUID()
     : `id-${Math.random().toString(36).slice(2, 10)}`;
 
-export const createStage = (type: StageType): Stage => {
+export const createStage = (type: StageType, campaignId?: string): Stage => {
+  const stageId = campaignId ? `${type}-${campaignId}` : createId();
+  
   switch (type) {
     case "source":
       return {
-        id: createId(),
+        id: stageId,
         type,
         completed: false,
         config: {
@@ -108,7 +118,7 @@ export const createStage = (type: StageType): Stage => {
       };
     case "scheduler":
       return {
-        id: createId(),
+        id: stageId,
         type,
         completed: false,
         config: {
@@ -119,7 +129,7 @@ export const createStage = (type: StageType): Stage => {
       };
     case "target":
       return {
-        id: createId(),
+        id: stageId,
         type,
         completed: false,
         config: {
@@ -175,6 +185,10 @@ export const isStageConfigComplete = (stage: Stage): boolean => {
     case "scheduler":
       return Boolean(stage.config.timezone?.trim()?.length > 0) && Boolean(stage.config.cadence);
     case "target":
+      if (stage.config.channel === 'Telegram') {
+        const tg = stage.config.telegram;
+        return Boolean(tg?.botToken?.trim()) && Boolean(tg?.chatIdOrUsername?.trim());
+      }
       return Boolean(stage.config.destination?.trim()?.length > 0) && Boolean(stage.config.channel);
     default:
       return false;

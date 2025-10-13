@@ -188,6 +188,33 @@ export const StageSettingsPanel = ({ campaign, stage, onSaveStage }: StageSettin
                   ))}
                 </div>
               )}
+
+              {/* Target channel selection on the right side of header for target stages */}
+              {stage.type === "target" && (
+                <div className="flex gap-2">
+                  {TARGET_OPTIONS.map((option) => (
+                    <button
+                      key={option}
+                      type="button"
+                      onClick={() => {
+                        const targetStage = stage as TargetStage;
+                        handleConfigChange({
+                          ...targetStage.config,
+                          channel: option,
+                        });
+                      }}
+                      className={cn(
+                        "rounded-xl border px-3 py-2 text-sm font-light transition w-36 text-center",
+                        option === (stage as TargetStage).config.channel
+                          ? "border-stage-target bg-stage-target/15 text-stage-target"
+                          : "border-border/70 text-foreground/70 hover:border-foreground/70 hover:text-foreground",
+                      )}
+                    >
+                      {option}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
             {/* Form header moved here */}
             {formHeader.title && (
@@ -574,36 +601,108 @@ const TargetForm = ({ value, onChange }: FormProps<TargetStage["config"]>) => {
 
   return (
     <div className="flex flex-col gap-6">
-      <section>
-        <div className="grid grid-cols-2 gap-3">
-          {TARGET_OPTIONS.map((option) => (
-            <button
-              key={option}
-              type="button"
-              onClick={() => update({ channel: option })}
-              className={cn(
-                "rounded-2xl border px-4 py-3 text-left text-sm font-medium transition",
-                option === value.channel
-                  ? "border-stage-target bg-stage-target/15 text-stage-target"
-                  : "border-border/70 text-foreground/70 hover:border-foreground/70 hover:text-foreground",
-              )}
-            >
-              {option}
-            </button>
-          ))}
-        </div>
-      </section>
 
       <section className="grid gap-4">
-        <label className="flex flex-col text-sm text-foreground">
-          Destination handle
-          <input
-            value={value.destination}
-            onChange={(event) => update({ destination: event.target.value })}
-            placeholder="e.g. @micro-saas-launches"
-            className="mt-2 border border-border/70 bg-stage-inactive px-4 py-3 text-sm text-foreground placeholder:text-foreground/40 focus:border-border focus:outline-none focus:ring-0"
-          />
-        </label>
+        {value.channel !== 'Telegram' && (
+          <label className="flex flex-col text-sm text-foreground">
+            Destination handle
+            <input
+              value={value.destination}
+              onChange={(event) => update({ destination: event.target.value })}
+              placeholder="e.g. @brand"
+              className="mt-2 border border-border/70 bg-stage-inactive px-4 py-3 text-sm text-foreground placeholder:text-foreground/40 focus:border-border focus:outline-none focus:ring-0"
+            />
+          </label>
+        )}
+
+        {value.channel === 'Telegram' && (
+          <div className="grid gap-3">
+            <label className="flex flex-col text-sm text-foreground">
+              Bot Token
+              <input
+                value={value.telegram?.botToken || ''}
+                onChange={(e) => update({ telegram: { ...(value.telegram || {}), botToken: e.target.value } })}
+                placeholder="123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
+                className="mt-2 border border-border/70 bg-stage-inactive px-3 py-2 text-sm text-foreground placeholder:text-foreground/40 focus:border-border focus:outline-none focus:ring-0"
+              />
+            </label>
+
+            <label className="flex flex-col text-sm text-foreground">
+              Channel chat_id or @username
+              <input
+                value={value.telegram?.chatIdOrUsername || ''}
+                onChange={(e) => update({ telegram: { ...(value.telegram || {}), chatIdOrUsername: e.target.value } })}
+                placeholder="-1001234567890 or @mychannel"
+                className="mt-2 border border-border/70 bg-stage-inactive px-3 py-2 text-sm text-foreground placeholder:text-foreground/40 focus:border-border focus:outline-none focus:ring-0"
+              />
+            </label>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!value.telegram?.botToken || !value.telegram?.chatIdOrUsername) return;
+                  try {
+                    const response = await fetch('http://localhost:3001/api/telegram/test-connection', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        botToken: value.telegram.botToken,
+                        chatIdOrUsername: value.telegram.chatIdOrUsername,
+                      }),
+                    });
+                    const result = await response.json();
+                    if (result.success) {
+                      alert('Telegram connection successful');
+                    } else {
+                      alert(`Telegram connection failed: ${result.message || 'Unknown error'}`);
+                    }
+                  } catch (err) {
+                    alert('Telegram connection failed');
+                  }
+                }}
+                className="rounded-xl border px-3 py-2 text-xs font-light transition"
+              >
+                Test Connection
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <label className="flex flex-col text-sm text-foreground">
+                Parse mode
+                <select
+                  value={value.telegram?.parseMode || 'None'}
+                  onChange={(e) => update({ telegram: { ...(value.telegram || {}), parseMode: e.target.value as any } })}
+                  className="mt-2 border border-border/70 bg-stage-inactive px-3 py-2 text-sm text-foreground focus:border-border focus:outline-none focus:ring-0"
+                >
+                  <option value="None">None</option>
+                  <option value="MarkdownV2">MarkdownV2</option>
+                  <option value="HTML">HTML</option>
+                </select>
+              </label>
+
+              <label className="flex items-center gap-2 text-sm text-foreground mt-7">
+                <input
+                  type="checkbox"
+                  checked={Boolean(value.telegram?.disableWebPagePreview)}
+                  onChange={(e) => update({ telegram: { ...(value.telegram || {}), disableWebPagePreview: e.target.checked } })}
+                  className="h-4 w-4"
+                />
+                Disable link preview
+              </label>
+            </div>
+
+            <label className="flex flex-col text-sm text-foreground">
+              Message thread ID (optional)
+              <input
+                value={value.telegram?.messageThreadId || ''}
+                onChange={(e) => update({ telegram: { ...(value.telegram || {}), messageThreadId: e.target.value } })}
+                placeholder="Forum topic ID"
+                className="mt-2 border border-border/70 bg-stage-inactive px-3 py-2 text-sm text-foreground placeholder:text-foreground/40 focus:border-border focus:outline-none focus:ring-0"
+              />
+            </label>
+          </div>
+        )}
 
         <label className="flex flex-col text-sm text-foreground">
           Publishing flow
