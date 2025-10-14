@@ -566,6 +566,43 @@ const SchedulerForm = ({ value, onChange }: FormProps<SchedulerStage["config"]>)
     "Pacific/Auckland",
   ];
 
+  // Local state for input values to allow free typing
+  const [dailyHourInput, setDailyHourInput] = useState<string>(value.dailyHour?.toString() ?? '');
+
+  // Update local input when value changes from outside
+  useEffect(() => {
+    setDailyHourInput(value.dailyHour?.toString() ?? '');
+  }, [value.dailyHour]);
+
+  const handleDailyHourChange = (inputValue: string) => {
+    setDailyHourInput(inputValue);
+    
+    if (inputValue === '') {
+      update({ dailyHour: undefined });
+      return;
+    }
+    
+    const hour = parseInt(inputValue);
+    if (!isNaN(hour) && hour >= 0 && hour <= 23) {
+      update({ dailyHour: hour });
+    }
+  };
+
+  const handleDailyHourBlur = () => {
+    // On blur, validate and set to default if invalid
+    if (dailyHourInput === '') {
+      update({ dailyHour: undefined });
+      return;
+    }
+    
+    const hour = parseInt(dailyHourInput);
+    if (isNaN(hour) || hour < 0 || hour > 23) {
+      // Reset to default if invalid
+      setDailyHourInput('20');
+      update({ dailyHour: 20 });
+    }
+  };
+
   return (
     <div className="flex flex-col gap-4">
       {/* Mode Selection */}
@@ -606,21 +643,9 @@ const SchedulerForm = ({ value, onChange }: FormProps<SchedulerStage["config"]>)
             Daily Hour (0-23)
             <input
               type="text"
-              value={value.dailyHour ?? ''}
-              onChange={(event) => {
-                const inputValue = event.target.value;
-                // Allow empty input
-                if (inputValue === '') {
-                  update({ dailyHour: undefined });
-                  return;
-                }
-                // Parse and validate the input
-                const hour = parseInt(inputValue);
-                if (!isNaN(hour) && hour >= 0 && hour <= 23) {
-                  update({ dailyHour: hour });
-                }
-                // If invalid, don't update (keeps previous valid value)
-              }}
+              value={dailyHourInput}
+              onChange={(event) => handleDailyHourChange(event.target.value)}
+              onBlur={handleDailyHourBlur}
               placeholder="20"
               className="mt-1 border border-border/70 bg-stage-inactive px-3 py-2 text-sm text-foreground focus:border-border focus:outline-none focus:ring-0"
             />
