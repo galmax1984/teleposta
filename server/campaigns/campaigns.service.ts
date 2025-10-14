@@ -107,8 +107,12 @@ export class CampaignsService {
         sourceConfig: stage.config || {},
       } as Partial<Campaign>);
     } else if (stage?.type === 'scheduler') {
+      const scheduleConfig = stage.config || {};
+      const nextRunAt = this.computeNextRunAt(scheduleConfig);
+      
       await this.update(campaignId, {
-        scheduleConfig: stage.config || {},
+        scheduleConfig,
+        nextRunAt,
       } as Partial<Campaign>);
     } else if (stage?.type === 'target') {
       await this.update(campaignId, {
@@ -133,5 +137,65 @@ export class CampaignsService {
     }
     // Fallback: If possible, check if result is truthy.
     return !!result;
+  }
+
+  private computeNextRunAt(scheduleConfig: any): Date | null {
+    try {
+      const { mode, timezone, startDate, dailyHour, dailyRandomMinutes, everyHours, hourlyRandomMinutes } = scheduleConfig;
+      
+      if (!mode || !timezone || !startDate) {
+        return null;
+      }
+
+      const startDateObj = new Date(startDate);
+      const now = new Date();
+      
+      // If start date is in the future, use it as the next run time
+      if (startDateObj > now) {
+        return this.addRandomization(startDateObj, dailyRandomMinutes || hourlyRandomMinutes || 0);
+      }
+
+      if (mode === 'daily') {
+        const hour = dailyHour || 20;
+        const randomMinutes = dailyRandomMinutes || 0;
+        
+        // Calculate next run time for today or tomorrow
+        const today = new Date();
+        today.setHours(hour, 0, 0, 0);
+        
+        if (today <= now) {
+          // If today's time has passed, schedule for tomorrow
+          today.setDate(today.getDate() + 1);
+        }
+        
+        return this.addRandomization(today, randomMinutes);
+      }
+      
+      if (mode === 'hourly') {
+        const intervalHours = everyHours || 1;
+        const randomMinutes = hourlyRandomMinutes || 0;
+        
+        // Calculate next run time based on hourly interval
+        const nextRun = new Date(now);
+        nextRun.setMinutes(0, 0, 0); // Round down to the hour
+        nextRun.setHours(nextRun.getHours() + intervalHours);
+        
+        return this.addRandomization(nextRun, randomMinutes);
+      }
+      
+      return null;
+    } catch (error) {
+      console.error('Error computing next run time:', error);
+      return null;
+    }
+  }
+
+  private addRandomization(baseTime: Date, randomMinutes: number): Date {
+    if (randomMinutes <= 0) {
+      return baseTime;
+    }
+    
+    const randomMs = Math.random() * randomMinutes * 60 * 1000;
+    return new Date(baseTime.getTime() + randomMs);
   }
 }

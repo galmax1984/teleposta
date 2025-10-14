@@ -100,6 +100,7 @@ export interface Campaign {
   name: string;
   stages: Stage[];
   lastRunAt?: string | null;
+  nextRunAt?: string | null;
   status?: "Pending" | "Active";
 }
 

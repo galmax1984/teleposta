@@ -177,7 +177,7 @@ export const StageSettingsPanel = ({ campaign, stage, onSaveStage }: StageSettin
                         });
                       }}
                       className={cn(
-                        "rounded-xl border px-3 py-2 text-sm font-light transition w-36 text-center",
+                        "rounded-lg border px-2 py-1 text-xs font-light transition w-24 text-center",
                         option === (stage as SourceStage).config.sourceType
                           ? "border-stage-source bg-stage-source/15 text-stage-source"
                           : "border-border/70 text-foreground/70 hover:border-foreground/70 hover:text-foreground",
@@ -204,7 +204,7 @@ export const StageSettingsPanel = ({ campaign, stage, onSaveStage }: StageSettin
                         });
                       }}
                       className={cn(
-                        "rounded-xl border px-3 py-2 text-sm font-light transition w-36 text-center",
+                        "rounded-lg border px-2 py-1 text-xs font-light transition w-24 text-center",
                         option === (stage as TargetStage).config.channel
                           ? "border-stage-target bg-stage-target/15 text-stage-target"
                           : "border-border/70 text-foreground/70 hover:border-foreground/70 hover:text-foreground",

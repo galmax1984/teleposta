@@ -346,23 +346,24 @@ export default function Index() {
       console.log("API response result:", result);
 
       if (result.success) {
-        // Update local state on success - set to Active and update timestamp
+        // Update local state on success - set to Active and update next run time
         setCampaigns((previous) =>
           previous.map((c) => {
             if (c.id !== campaignId) return c;
             return {
               ...c,
-              lastRunAt: new Date().toISOString(),
               status: "Active",
+              // Update nextRunAt if provided in response
+              ...(result.nextRunAt && { nextRunAt: result.nextRunAt }),
             };
           }),
         );
         
-        toast.success("Campaign executed successfully", {
-          description: result.message || "Message sent to Telegram channel",
+        toast.success("Campaign scheduled successfully", {
+          description: result.message || "Campaign has been scheduled",
         });
       } else {
-        toast.error("Campaign execution failed", {
+        toast.error("Campaign scheduling failed", {
           description: result.message || "An unexpected error occurred",
         });
       }
