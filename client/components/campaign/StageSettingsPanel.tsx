@@ -549,45 +549,144 @@ const SchedulerForm = ({ value, onChange }: FormProps<SchedulerStage["config"]>)
   const update = (patch: Partial<SchedulerStage["config"]>) =>
     onChange({ ...value, ...patch });
 
+  const timezones = [
+    "UTC",
+    "America/New_York",
+    "America/Chicago", 
+    "America/Denver",
+    "America/Los_Angeles",
+    "Europe/London",
+    "Europe/Paris",
+    "Europe/Berlin",
+    "Europe/Rome",
+    "Asia/Tokyo",
+    "Asia/Shanghai",
+    "Asia/Kolkata",
+    "Australia/Sydney",
+    "Pacific/Auckland",
+  ];
+
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-4">
+      {/* Mode Selection */}
       <section>
-        <div className="grid grid-cols-2 gap-3">
-          {SCHEDULER_OPTIONS.map((option) => (
-            <button
-              key={option}
-              type="button"
-              onClick={() => update({ cadence: option })}
-              className={cn(
-                "rounded-2xl border px-4 py-3 text-left text-sm font-medium transition",
-                option === value.cadence
-                  ? "border-stage-scheduler bg-stage-scheduler/20 text-stage-scheduler"
-                  : "border-border/70 text-foreground/70 hover:border-foreground/70 hover:text-foreground",
-              )}
-            >
-              {option}
-            </button>
-          ))}
+        <label className="text-sm text-foreground mb-2 block">Schedule Mode</label>
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={() => update({ mode: "daily" })}
+            className={cn(
+              "rounded-xl border px-3 py-2 text-sm font-light transition",
+              value.mode === "daily"
+                ? "border-stage-scheduler bg-stage-scheduler/15 text-stage-scheduler"
+                : "border-border/70 text-foreground/70 hover:border-foreground/70 hover:text-foreground",
+            )}
+          >
+            Daily
+          </button>
+          <button
+            type="button"
+            onClick={() => update({ mode: "hourly" })}
+            className={cn(
+              "rounded-xl border px-3 py-2 text-sm font-light transition",
+              value.mode === "hourly"
+                ? "border-stage-scheduler bg-stage-scheduler/15 text-stage-scheduler"
+                : "border-border/70 text-foreground/70 hover:border-foreground/70 hover:text-foreground",
+            )}
+          >
+            Hourly
+          </button>
         </div>
       </section>
 
-      <section className="grid gap-4">
-        <label className="flex flex-col text-sm text-foreground">
+      {/* Daily Mode Settings */}
+      {value.mode === "daily" && (
+        <section className="grid gap-3">
+          <label className="flex flex-col text-xs text-foreground">
+            Daily Hour (0-23)
+            <input
+              type="number"
+              min="0"
+              max="23"
+              value={value.dailyHour || 20}
+              onChange={(event) => update({ dailyHour: parseInt(event.target.value) || 20 })}
+              className="mt-1 border border-border/70 bg-stage-inactive px-3 py-2 text-sm text-foreground focus:border-border focus:outline-none focus:ring-0"
+            />
+          </label>
+          <label className="flex flex-col text-xs text-foreground">
+            Random Minutes (0-120)
+            <input
+              type="number"
+              min="0"
+              max="120"
+              value={value.dailyRandomMinutes || 0}
+              onChange={(event) => update({ dailyRandomMinutes: parseInt(event.target.value) || 0 })}
+              className="mt-1 border border-border/70 bg-stage-inactive px-3 py-2 text-sm text-foreground focus:border-border focus:outline-none focus:ring-0"
+            />
+            <p className="mt-1 text-xs text-foreground/60">
+              Random delay to avoid predictable posting times
+            </p>
+          </label>
+        </section>
+      )}
+
+      {/* Hourly Mode Settings */}
+      {value.mode === "hourly" && (
+        <section className="grid gap-3">
+          <label className="flex flex-col text-xs text-foreground">
+            Every Hours (1+)
+            <input
+              type="number"
+              min="1"
+              value={value.everyHours || 1}
+              onChange={(event) => update({ everyHours: parseInt(event.target.value) || 1 })}
+              className="mt-1 border border-border/70 bg-stage-inactive px-3 py-2 text-sm text-foreground focus:border-border focus:outline-none focus:ring-0"
+            />
+          </label>
+          <label className="flex flex-col text-xs text-foreground">
+            Random Minutes (0-120)
+            <input
+              type="number"
+              min="0"
+              max="120"
+              value={value.hourlyRandomMinutes || 0}
+              onChange={(event) => update({ hourlyRandomMinutes: parseInt(event.target.value) || 0 })}
+              className="mt-1 border border-border/70 bg-stage-inactive px-3 py-2 text-sm text-foreground focus:border-border focus:outline-none focus:ring-0"
+            />
+            <p className="mt-1 text-xs text-foreground/60">
+              Random delay to avoid predictable posting times
+            </p>
+          </label>
+        </section>
+      )}
+
+      {/* Timezone Selection */}
+      <section>
+        <label className="flex flex-col text-xs text-foreground">
           Timezone
-          <input
-            value={value.timezone}
+          <select
+            value={value.timezone || "UTC"}
             onChange={(event) => update({ timezone: event.target.value })}
-            placeholder="e.g. America/New_York"
-            className="mt-2 border border-border/70 bg-stage-inactive px-4 py-3 text-sm text-foreground placeholder:text-foreground/40 focus:border-border focus:outline-none focus:ring-0"
-          />
+            className="mt-1 border border-border/70 bg-stage-inactive px-3 py-2 text-sm text-foreground focus:border-border focus:outline-none focus:ring-0"
+          >
+            {timezones.map((tz) => (
+              <option key={tz} value={tz}>
+                {tz}
+              </option>
+            ))}
+          </select>
         </label>
-        <label className="flex flex-col text-sm text-foreground">
-          Start date
+      </section>
+
+      {/* Start Date */}
+      <section>
+        <label className="flex flex-col text-xs text-foreground">
+          Start Date
           <input
             type="date"
-            value={value.startDate}
+            value={value.startDate || new Date().toISOString().slice(0, 10)}
             onChange={(event) => update({ startDate: event.target.value })}
-            className="mt-2 border border-border/70 bg-stage-inactive px-4 py-3 text-sm text-foreground focus:border-border focus:outline-none focus:ring-0"
+            className="mt-1 border border-border/70 bg-stage-inactive px-3 py-2 text-sm text-foreground focus:border-border focus:outline-none focus:ring-0"
           />
         </label>
       </section>

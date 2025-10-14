@@ -105,18 +105,17 @@ export class CampaignsController {
         return { success: false, message: 'Incomplete Telegram configuration' };
       }
 
-      // Read first value of column A (including header)
-      console.log("Creating GoogleSheetsService and reading column A...");
+      // Read A1 rich text as HTML
+      console.log("Creating GoogleSheetsService and reading A1 rich text as HTML...");
       const sheetsSvc = new GoogleSheetsService(sheetsConfig.credentials);
-      const values = await sheetsSvc.getColumnValues({
-        spreadsheetId: sheetsConfig.spreadsheetId,
-        sheetName: sheetsConfig.sheetName,
-        column: 'A',
-        skipHeader: false,
-      });
+      const textHtml = await sheetsSvc.getCellRichTextHTML(
+        sheetsConfig.spreadsheetId,
+        sheetsConfig.sheetName,
+        'A1',
+      );
       
-      console.log("Column A values:", values);
-      const text = values[0] || '';
+      console.log("A1 rich HTML:", textHtml);
+      const text = textHtml || '';
       if (!text) {
         console.log("A1 cell is empty");
         return { success: false, message: 'A1 is empty' };
@@ -131,7 +130,7 @@ export class CampaignsController {
         body: JSON.stringify({ 
           chat_id: telegramConfig.chatIdOrUsername, 
           text,
-          parse_mode: telegramConfig.parseMode,
+          parse_mode: telegramConfig.parseMode || 'HTML',
           disable_web_page_preview: telegramConfig.disableWebPagePreview,
           message_thread_id: telegramConfig.messageThreadId,
         }),

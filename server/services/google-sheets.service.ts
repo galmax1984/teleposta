@@ -147,6 +147,112 @@ export class GoogleSheetsService {
     }
   }
 
+  // Read a single cell with rich text runs and return as HTML (supports <b>, <i>)
+  async getCellRichTextHTML(
+    spreadsheetId: string,
+    sheetName: string,
+    a1Address: string, // e.g., "A1"
+  ): Promise<string> {
+    try {
+      const range = `${sheetName}!${a1Address}`;
+      const resp = await this.sheets.spreadsheets.get({
+        spreadsheetId,
+        ranges: [range],
+        includeGridData: true,
+      });
+
+      const sheets = resp.data.sheets || [];
+      if (sheets.length === 0) return "";
+      const data = sheets[0]?.data?.[0];
+      const rowData = data?.rowData?.[0];
+      const cell = rowData?.values?.[0];
+      if (!cell) return "";
+
+      const userEnteredValue = cell.userEnteredValue;
+      const fullText: string = userEnteredValue?.stringValue || cell.formattedValue || "";
+      if (!fullText) return "";
+
+      const runs = cell.textFormatRuns as Array<{
+        startIndex?: number;
+        format?: { bold?: boolean; italic?: boolean };
+      }> | undefined;
+
+      // If no runs, return escaped plain text
+      if (!runs || runs.length === 0) {
+        return this.escapeHtml(fullText);
+      }
+
+      // Build segments with flags
+      type Seg = { text: string; bold: boolean; italic: boolean };
+      const segments: Seg[] = [];
+      // Build an array of indices marking style boundaries
+      const boundaries = new Set<number>([0, fullText.length]);
+      runs.forEach((r) => {
+        if (typeof r.startIndex === 'number') boundaries.add(r.startIndex);
+      });
+      const sorted = Array.from(boundaries).sort((a, b) => a - b);
+
+      // Determine active format for each boundary span
+      for (let i = 0; i < sorted.length - 1; i++) {
+        const start = sorted[i];
+        const end = sorted[i + 1];
+        const text = fullText.slice(start, end);
+        // Find the last run that starts at or before 'start' to get current style
+        let bold = false;
+        let italic = false;
+        if (runs && runs.length > 0) {
+          // Google sets base style implicitly (first run often at 0)
+          let lastRun = undefined as undefined | { bold?: boolean; italic?: boolean };
+          for (const r of runs) {
+            if ((r.startIndex ?? 0) <= start) lastRun = r.format;
+          }
+          if (lastRun) {
+            bold = Boolean(lastRun.bold);
+            italic = Boolean(lastRun.italic);
+          }
+        }
+        segments.push({ text, bold, italic });
+      }
+
+      // Merge adjacent segments with same style
+      const merged: Seg[] = [];
+      for (const seg of segments) {
+        const prev = merged[merged.length - 1];
+        if (prev && prev.bold === seg.bold && prev.italic === seg.italic) {
+          prev.text += seg.text;
+        } else {
+          merged.push({ ...seg });
+        }
+      }
+
+      // Render to HTML with escaping
+      const html = merged
+        .map((seg) => {
+          let t = this.escapeHtml(seg.text);
+          if (seg.bold) t = `<b>${t}</b>`;
+          if (seg.italic) t = `<i>${t}</i>`;
+          return t;
+        })
+        .join("");
+
+      return html;
+    } catch (error) {
+      return "";
+    }
+  }
+
+  private escapeHtml(input: string): string {
+    const escaped = input
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/\"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+    
+    console.log("HTML escaping:", { input: input.substring(0, 100), escaped: escaped.substring(0, 100) });
+    return escaped;
+  }
+
   // Read a single column's values (default: column A). Skips the header row.
   async getColumnValues(params: {
     spreadsheetId: string;
