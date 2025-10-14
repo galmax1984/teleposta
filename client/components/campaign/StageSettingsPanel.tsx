@@ -606,10 +606,10 @@ const SchedulerForm = ({ value, onChange }: FormProps<SchedulerStage["config"]>)
             Daily Hour (0-23)
             <input
               type="text"
-              value={value.dailyHour || 20}
+              value={value.dailyHour ?? ''}
               onChange={(event) => {
                 const inputValue = event.target.value;
-                // Allow empty input for editing
+                // Allow empty input
                 if (inputValue === '') {
                   update({ dailyHour: undefined });
                   return;
