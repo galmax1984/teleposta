@@ -3,6 +3,7 @@ import { GoogleSheetsService } from '../services/google-sheets.service';
 import { db } from '../database/database';
 import { campaigns, logs } from '../database/schema';
 import { eq } from 'drizzle-orm';
+import { fromZonedTime, toZonedTime, format } from 'date-fns-tz';
 
 @Injectable()
 export class SchedulerService {
@@ -143,30 +144,48 @@ export class SchedulerService {
         return null;
       }
 
-      const now = new Date();
+      // Get current time in the configured timezone
+      const nowInTimezone = toZonedTime(new Date(), timezone);
+      console.log(`Scheduler: Current time in ${timezone}:`, format(nowInTimezone, 'yyyy-MM-dd HH:mm:ss', { timeZone: timezone }));
 
       if (mode === 'daily') {
         const hour = dailyHour || 20;
         const randomMinutes = dailyRandomMinutes || 0;
         
-        // Calculate next run time for tomorrow
-        const tomorrow = new Date(now);
-        tomorrow.setDate(tomorrow.getDate() + 1);
-        tomorrow.setHours(hour, 0, 0, 0);
+        // Calculate next run time for tomorrow in the configured timezone
+        const tomorrowInTimezone = new Date(nowInTimezone);
+        tomorrowInTimezone.setDate(tomorrowInTimezone.getDate() + 1);
+        tomorrowInTimezone.setHours(hour, 0, 0, 0);
         
-        return this.addRandomization(tomorrow, randomMinutes);
+        // Add randomization
+        const randomizedTime = this.addRandomization(tomorrowInTimezone, randomMinutes);
+        
+        // Convert back to UTC for storage
+        const utcTime = fromZonedTime(randomizedTime, timezone);
+        console.log(`Scheduler: Next run time in ${timezone}:`, format(randomizedTime, 'yyyy-MM-dd HH:mm:ss', { timeZone: timezone }));
+        console.log(`Scheduler: Next run time in UTC:`, format(utcTime, 'yyyy-MM-dd HH:mm:ss', { timeZone: 'UTC' }));
+        
+        return utcTime;
       }
       
       if (mode === 'hourly') {
         const intervalHours = everyHours || 1;
         const randomMinutes = hourlyRandomMinutes || 0;
         
-        // Calculate next run time based on hourly interval
-        const nextRun = new Date(now);
-        nextRun.setMinutes(0, 0, 0); // Round down to the hour
-        nextRun.setHours(nextRun.getHours() + intervalHours);
+        // Calculate next run time based on hourly interval in the configured timezone
+        const nextRunInTimezone = new Date(nowInTimezone);
+        nextRunInTimezone.setMinutes(0, 0, 0); // Round down to the hour
+        nextRunInTimezone.setHours(nextRunInTimezone.getHours() + intervalHours);
         
-        return this.addRandomization(nextRun, randomMinutes);
+        // Add randomization
+        const randomizedTime = this.addRandomization(nextRunInTimezone, randomMinutes);
+        
+        // Convert back to UTC for storage
+        const utcTime = fromZonedTime(randomizedTime, timezone);
+        console.log(`Scheduler: Next run time in ${timezone}:`, format(randomizedTime, 'yyyy-MM-dd HH:mm:ss', { timeZone: timezone }));
+        console.log(`Scheduler: Next run time in UTC:`, format(utcTime, 'yyyy-MM-dd HH:mm:ss', { timeZone: 'UTC' }));
+        
+        return utcTime;
       }
       
       return null;

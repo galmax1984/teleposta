@@ -605,13 +605,30 @@ const SchedulerForm = ({ value, onChange }: FormProps<SchedulerStage["config"]>)
           <label className="flex flex-col text-xs text-foreground">
             Daily Hour (0-23)
             <input
-              type="number"
-              min="0"
-              max="23"
+              type="text"
               value={value.dailyHour || 20}
-              onChange={(event) => update({ dailyHour: parseInt(event.target.value) || 20 })}
+              onChange={(event) => {
+                const inputValue = event.target.value;
+                // Allow empty input for editing
+                if (inputValue === '') {
+                  update({ dailyHour: undefined });
+                  return;
+                }
+                // Parse and validate the input
+                const hour = parseInt(inputValue);
+                if (!isNaN(hour) && hour >= 0 && hour <= 23) {
+                  update({ dailyHour: hour });
+                }
+                // If invalid, don't update (keeps previous valid value)
+              }}
+              placeholder="20"
               className="mt-1 border border-border/70 bg-stage-inactive px-3 py-2 text-sm text-foreground focus:border-border focus:outline-none focus:ring-0"
             />
+            {value.dailyHour !== undefined && (value.dailyHour < 0 || value.dailyHour > 23) && (
+              <p className="mt-1 text-xs text-red-500">
+                Hour must be between 0 and 23
+              </p>
+            )}
           </label>
           <label className="flex flex-col text-xs text-foreground">
             Random Minutes (0-120)

@@ -1,6 +1,7 @@
 import { Controller, Get, Post, Body, Patch, Param, Delete, Inject } from '@nestjs/common';
 import { CampaignsService } from './campaigns.service';
 import { type Campaign, type NewCampaign } from '../database/schema';
+import { fromZonedTime, toZonedTime, format } from 'date-fns-tz';
 
 @Controller('api/campaigns')
 export class CampaignsController {
@@ -101,34 +102,52 @@ export class CampaignsController {
         return null;
       }
 
-      const now = new Date();
+      // Get current time in the configured timezone
+      const nowInTimezone = toZonedTime(new Date(), timezone);
+      console.log(`Current time in ${timezone}:`, format(nowInTimezone, 'yyyy-MM-dd HH:mm:ss', { timeZone: timezone }));
 
       if (mode === 'daily') {
         const hour = dailyHour || 20;
         const randomMinutes = dailyRandomMinutes || 0;
         
-        // Calculate next run time for today or tomorrow
-        const today = new Date();
-        today.setHours(hour, 0, 0, 0);
+        // Create the target time in the configured timezone
+        const targetTimeInTimezone = new Date(nowInTimezone);
+        targetTimeInTimezone.setHours(hour, 0, 0, 0);
         
-        if (today <= now) {
-          // If today's time has passed, schedule for tomorrow
-          today.setDate(today.getDate() + 1);
+        // If the target time has passed today, schedule for tomorrow
+        if (targetTimeInTimezone <= nowInTimezone) {
+          targetTimeInTimezone.setDate(targetTimeInTimezone.getDate() + 1);
         }
         
-        return this.addRandomization(today, randomMinutes);
+        // Add randomization
+        const randomizedTime = this.addRandomization(targetTimeInTimezone, randomMinutes);
+        
+        // Convert back to UTC for storage
+        const utcTime = fromZonedTime(randomizedTime, timezone);
+        console.log(`Next run time in ${timezone}:`, format(randomizedTime, 'yyyy-MM-dd HH:mm:ss', { timeZone: timezone }));
+        console.log(`Next run time in UTC:`, format(utcTime, 'yyyy-MM-dd HH:mm:ss', { timeZone: 'UTC' }));
+        
+        return utcTime;
       }
       
       if (mode === 'hourly') {
         const intervalHours = everyHours || 1;
         const randomMinutes = hourlyRandomMinutes || 0;
         
-        // Calculate next run time based on hourly interval
-        const nextRun = new Date(now);
-        nextRun.setMinutes(0, 0, 0); // Round down to the hour
-        nextRun.setHours(nextRun.getHours() + intervalHours);
+        // Calculate next run time based on hourly interval in the configured timezone
+        const nextRunInTimezone = new Date(nowInTimezone);
+        nextRunInTimezone.setMinutes(0, 0, 0); // Round down to the hour
+        nextRunInTimezone.setHours(nextRunInTimezone.getHours() + intervalHours);
         
-        return this.addRandomization(nextRun, randomMinutes);
+        // Add randomization
+        const randomizedTime = this.addRandomization(nextRunInTimezone, randomMinutes);
+        
+        // Convert back to UTC for storage
+        const utcTime = fromZonedTime(randomizedTime, timezone);
+        console.log(`Next run time in ${timezone}:`, format(randomizedTime, 'yyyy-MM-dd HH:mm:ss', { timeZone: timezone }));
+        console.log(`Next run time in UTC:`, format(utcTime, 'yyyy-MM-dd HH:mm:ss', { timeZone: 'UTC' }));
+        
+        return utcTime;
       }
       
       return null;
