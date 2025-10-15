@@ -88,7 +88,7 @@ export default function Index() {
               stages: stages,
               lastRunAt: dbCampaign.lastRunAt,
               nextRunAt: dbCampaign.nextRunAt,
-              status: dbCampaign.status || "Pending", // Use database status or default to Pending
+              status: dbCampaign.status === 'active' ? 'Active' : 'Pending',
             };
           });
           
