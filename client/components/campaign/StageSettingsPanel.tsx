@@ -50,8 +50,8 @@ const getStageFormHeader = (stage: Stage) => {
       };
     case "scheduler":
       return {
-        title: "Cadence", 
-        description: "Set how often the automation should run."
+        title: "", 
+        description: ""
       };
     case "target":
       return {
@@ -177,13 +177,40 @@ export const StageSettingsPanel = ({ campaign, stage, onSaveStage }: StageSettin
                         });
                       }}
                       className={cn(
-                        "rounded-lg border px-2 py-1 text-xs font-light transition w-24 text-center",
-                        option === (stage as SourceStage).config.sourceType
+                        "rounded-xl border px-2 py-1 text-xs font-light transition w-24 text-center",
+                        option === (draftConfig as SourceStage["config"]).sourceType
                           ? "border-stage-source bg-stage-source/15 text-stage-source"
                           : "border-border/70 text-foreground/70 hover:border-foreground/70 hover:text-foreground",
                       )}
                     >
                       {option}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Scheduler mode selection on the right side of header for scheduler stages */}
+              {stage.type === "scheduler" && (
+                <div className="flex gap-2">
+                  {(["daily", "hourly"] as const).map((option) => (
+                    <button
+                      key={option}
+                      type="button"
+                      onClick={() => {
+                        const schedulerStage = stage as SchedulerStage;
+                        handleConfigChange({
+                          ...schedulerStage.config,
+                          mode: option,
+                        });
+                      }}
+                      className={cn(
+                        "rounded-xl border px-2 py-1 text-xs font-light transition w-24 text-center",
+                        option === (draftConfig as SchedulerStage["config"]).mode
+                          ? "border-stage-scheduler bg-stage-scheduler/15 text-stage-scheduler"
+                          : "border-border/70 text-foreground/70 hover:border-foreground/70 hover:text-foreground",
+                      )}
+                    >
+                      {option === 'daily' ? 'Daily' : 'Hourly'}
                     </button>
                   ))}
                 </div>
@@ -204,8 +231,8 @@ export const StageSettingsPanel = ({ campaign, stage, onSaveStage }: StageSettin
                         });
                       }}
                       className={cn(
-                        "rounded-lg border px-2 py-1 text-xs font-light transition w-24 text-center",
-                        option === (stage as TargetStage).config.channel
+                        "rounded-xl border px-2 py-1 text-xs font-light transition w-24 text-center",
+                        option === (draftConfig as TargetStage["config"]).channel
                           ? "border-stage-target bg-stage-target/15 text-stage-target"
                           : "border-border/70 text-foreground/70 hover:border-foreground/70 hover:text-foreground",
                       )}
@@ -246,7 +273,11 @@ export const StageSettingsPanel = ({ campaign, stage, onSaveStage }: StageSettin
             <SourceForm value={draftConfig as SourceStage["config"]} onChange={handleConfigChange} />
           )}
           {isScheduler(stage) && (
-            <SchedulerForm value={draftConfig as SchedulerStage["config"]} onChange={handleConfigChange} />
+            <SchedulerForm
+              value={draftConfig as SchedulerStage["config"]}
+              onChange={handleConfigChange}
+              scheduledNextRunAt={campaign?.nextRunAt}
+            />
           )}
           {isTarget(stage) && (
             <TargetForm value={draftConfig as TargetStage["config"]} onChange={handleConfigChange} />
@@ -278,6 +309,7 @@ export const StageSettingsPanel = ({ campaign, stage, onSaveStage }: StageSettin
 type FormProps<T> = {
   value: T;
   onChange: (next: Stage["config"]) => void;
+  scheduledNextRunAt?: string | null;
 };
 
 const SourceForm = ({ value, onChange }: FormProps<SourceStage["config"]>) => {
@@ -545,7 +577,7 @@ const SourceForm = ({ value, onChange }: FormProps<SourceStage["config"]>) => {
   );
 };
 
-const SchedulerForm = ({ value, onChange }: FormProps<SchedulerStage["config"]>) => {
+const SchedulerForm = ({ value, onChange, scheduledNextRunAt }: FormProps<SchedulerStage["config"]>) => {
   const update = (patch: Partial<SchedulerStage["config"]>) =>
     onChange({ ...value, ...patch });
 
@@ -603,38 +635,87 @@ const SchedulerForm = ({ value, onChange }: FormProps<SchedulerStage["config"]>)
     }
   };
 
+  // Helpers to compute preview in selected timezone (client-side, no libs)
+  const getDateInTimeZone = (date: Date, timeZone: string): Date => {
+    // Converts the given date to the same wall-clock time in the provided timezone
+    const inv = new Date(date.toLocaleString('en-US', { timeZone }));
+    const diff = date.getTime() - inv.getTime();
+    return new Date(date.getTime() - diff);
+  };
+
+  // Preview intentionally ignores randomization to match deterministic display; server applies random offset
+  const addRandomMinutes = (date: Date, _minutes: number) => date;
+
+  const nextRunPreview = useMemo(() => {
+    try {
+      const mode = value.mode;
+      const tz = value.timezone || 'UTC';
+      const startDate = value.startDate;
+      if (!mode || !tz || !startDate) return '';
+
+      const now = new Date();
+      const nowInTz = getDateInTimeZone(now, tz);
+
+      if (mode === 'daily') {
+        const hour = typeof value.dailyHour === 'number' ? value.dailyHour : 20;
+        const random = value.dailyRandomMinutes || 0;
+
+        const target = new Date(nowInTz);
+        target.setHours(hour, 0, 0, 0);
+
+        // Ensure startDate is respected
+        const start = getDateInTimeZone(new Date(startDate + 'T00:00:00'), tz);
+        if (target < start) {
+          target.setTime(start.getTime());
+          target.setHours(hour, 0, 0, 0);
+        }
+
+        if (target <= nowInTz) {
+          target.setDate(target.getDate() + 1);
+        }
+
+        const preview = addRandomMinutes(target, random);
+        const local = preview.toLocaleString(undefined, { timeZone: tz, hour12: false });
+        const utc = new Date(preview.getTime()).toISOString().replace('T', ' ').replace('Z', ' UTC');
+        return `${local} (${tz}) · ${utc}`;
+      }
+
+      if (mode === 'hourly') {
+        const every = value.everyHours || 1;
+        const random = value.hourlyRandomMinutes || 0;
+
+        const target = new Date(nowInTz);
+        target.setMinutes(0, 0, 0);
+        target.setHours(target.getHours() + every);
+
+        const preview = addRandomMinutes(target, random);
+        const local = preview.toLocaleString(undefined, { timeZone: tz, hour12: false });
+        const utc = new Date(preview.getTime()).toISOString().replace('T', ' ').replace('Z', ' UTC');
+        return `${local} (${tz}) · ${utc}`;
+      }
+
+      return '';
+    } catch {
+      return '';
+    }
+  }, [value.mode, value.timezone, value.startDate, value.dailyHour, value.dailyRandomMinutes, value.everyHours, value.hourlyRandomMinutes]);
+
+  const scheduledPreview = useMemo(() => {
+    try {
+      if (!scheduledNextRunAt) return '';
+      const tz = value.timezone || 'UTC';
+      const scheduled = new Date(scheduledNextRunAt);
+      const local = scheduled.toLocaleString(undefined, { timeZone: tz, hour12: false });
+      const utc = new Date(scheduled.getTime()).toISOString().replace('T', ' ').replace('Z', ' UTC');
+      return `${local} (${tz}) · ${utc}`;
+    } catch {
+      return '';
+    }
+  }, [scheduledNextRunAt, value.timezone]);
+
   return (
     <div className="flex flex-col gap-4">
-      {/* Mode Selection */}
-      <section>
-        <label className="text-sm text-foreground mb-2 block">Schedule Mode</label>
-        <div className="grid grid-cols-2 gap-2">
-          <button
-            type="button"
-            onClick={() => update({ mode: "daily" })}
-            className={cn(
-              "rounded-xl border px-3 py-2 text-sm font-light transition",
-              value.mode === "daily"
-                ? "border-stage-scheduler bg-stage-scheduler/15 text-stage-scheduler"
-                : "border-border/70 text-foreground/70 hover:border-foreground/70 hover:text-foreground",
-            )}
-          >
-            Daily
-          </button>
-          <button
-            type="button"
-            onClick={() => update({ mode: "hourly" })}
-            className={cn(
-              "rounded-xl border px-3 py-2 text-sm font-light transition",
-              value.mode === "hourly"
-                ? "border-stage-scheduler bg-stage-scheduler/15 text-stage-scheduler"
-                : "border-border/70 text-foreground/70 hover:border-foreground/70 hover:text-foreground",
-            )}
-          >
-            Hourly
-          </button>
-        </div>
-      </section>
+      {/* Mode Selection moved to header */}
 
       {/* Daily Mode Settings */}
       {value.mode === "daily" && (
@@ -732,6 +813,14 @@ const SchedulerForm = ({ value, onChange }: FormProps<SchedulerStage["config"]>)
           />
         </label>
       </section>
+
+      {scheduledPreview && (
+        <section>
+          <div className="text-xs text-foreground/70">
+            Next run: <span className="text-foreground font-medium">{scheduledPreview.split(' · ')[0]}</span>
+          </div>
+        </section>
+      )}
     </div>
   );
 };

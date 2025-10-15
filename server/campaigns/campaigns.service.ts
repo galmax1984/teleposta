@@ -147,39 +147,47 @@ export class CampaignsService {
         return null;
       }
 
-      const startDateObj = new Date(startDate);
       const now = new Date();
-      
-      // If start date is in the future, use it as the next run time
-      if (startDateObj > now) {
-        return this.addRandomization(startDateObj, dailyRandomMinutes || hourlyRandomMinutes || 0);
-      }
 
       if (mode === 'daily') {
         const hour = dailyHour || 20;
         const randomMinutes = dailyRandomMinutes || 0;
-        
-        // Calculate next run time for today or tomorrow
-        const today = new Date();
-        today.setHours(hour, 0, 0, 0);
-        
-        if (today <= now) {
-          // If today's time has passed, schedule for tomorrow
-          today.setDate(today.getDate() + 1);
+
+        // Build the start date at the configured hour (local server time; timezone handling occurs in controller/service using date-fns-tz)
+        const start = new Date(`${startDate}T00:00:00`);
+        start.setHours(hour, 0, 0, 0);
+
+        let target = new Date(start);
+        if (target <= now) {
+          target = new Date();
+          target.setHours(hour, 0, 0, 0);
+          if (target <= now) {
+            target.setDate(target.getDate() + 1);
+          }
         }
-        
-        return this.addRandomization(today, randomMinutes);
+
+        return this.addRandomization(target, randomMinutes);
       }
       
       if (mode === 'hourly') {
         const intervalHours = everyHours || 1;
         const randomMinutes = hourlyRandomMinutes || 0;
-        
-        // Calculate next run time based on hourly interval
-        const nextRun = new Date(now);
-        nextRun.setMinutes(0, 0, 0); // Round down to the hour
-        nextRun.setHours(nextRun.getHours() + intervalHours);
-        
+
+        const startDay = new Date(`${startDate}T00:00:00`);
+        let base = new Date(now);
+        if (now < startDay) {
+          base = new Date(startDay);
+        }
+        base.setMinutes(0, 0, 0);
+        if (base <= now) {
+          base.setHours(base.getHours() + 1);
+        }
+        const hoursSinceStart = Math.max(0, Math.ceil((base.getTime() - startDay.getTime()) / (60 * 60 * 1000)));
+        const remainder = hoursSinceStart % intervalHours;
+        const add = remainder === 0 ? 0 : (intervalHours - remainder);
+        const nextRun = new Date(base);
+        nextRun.setHours(nextRun.getHours() + add);
+
         return this.addRandomization(nextRun, randomMinutes);
       }
       

@@ -174,7 +174,7 @@ export class GoogleSheetsService {
 
       const runs = cell.textFormatRuns as Array<{
         startIndex?: number;
-        format?: { bold?: boolean; italic?: boolean };
+        format?: { bold?: boolean; italic?: boolean; link?: { uri?: string } };
       }> | undefined;
 
       // If no runs, return escaped plain text
@@ -183,7 +183,7 @@ export class GoogleSheetsService {
       }
 
       // Build segments with flags
-      type Seg = { text: string; bold: boolean; italic: boolean };
+      type Seg = { text: string; bold: boolean; italic: boolean; href?: string | null };
       const segments: Seg[] = [];
       // Build an array of indices marking style boundaries
       const boundaries = new Set<number>([0, fullText.length]);
@@ -200,25 +200,27 @@ export class GoogleSheetsService {
         // Find the last run that starts at or before 'start' to get current style
         let bold = false;
         let italic = false;
+        let href: string | undefined | null = null;
         if (runs && runs.length > 0) {
           // Google sets base style implicitly (first run often at 0)
-          let lastRun = undefined as undefined | { bold?: boolean; italic?: boolean };
+          let lastRun = undefined as undefined | { bold?: boolean; italic?: boolean; link?: { uri?: string } };
           for (const r of runs) {
             if ((r.startIndex ?? 0) <= start) lastRun = r.format;
           }
           if (lastRun) {
             bold = Boolean(lastRun.bold);
             italic = Boolean(lastRun.italic);
+            href = lastRun.link?.uri || null;
           }
         }
-        segments.push({ text, bold, italic });
+        segments.push({ text, bold, italic, href });
       }
 
       // Merge adjacent segments with same style
       const merged: Seg[] = [];
       for (const seg of segments) {
         const prev = merged[merged.length - 1];
-        if (prev && prev.bold === seg.bold && prev.italic === seg.italic) {
+        if (prev && prev.bold === seg.bold && prev.italic === seg.italic && prev.href === seg.href) {
           prev.text += seg.text;
         } else {
           merged.push({ ...seg });
@@ -226,14 +228,24 @@ export class GoogleSheetsService {
       }
 
       // Render to HTML with escaping
-      const html = merged
+      let html = merged
         .map((seg) => {
           let t = this.escapeHtml(seg.text);
           if (seg.bold) t = `<b>${t}</b>`;
           if (seg.italic) t = `<i>${t}</i>`;
+          if (seg.href) {
+            const safeHref = this.escapeHtmlAttribute(seg.href);
+            t = `<a href="${safeHref}">${t}</a>`;
+          }
           return t;
         })
         .join("");
+
+      // If cell has a global hyperlink and no per-run links, wrap entire content
+      if (!merged.some(s => s.href) && cell.hyperlink) {
+        const safeHref = this.escapeHtmlAttribute(String(cell.hyperlink));
+        html = `<a href="${safeHref}">${html}</a>`;
+      }
 
       return html;
     } catch (error) {
@@ -251,6 +263,15 @@ export class GoogleSheetsService {
     
     console.log("HTML escaping:", { input: input.substring(0, 100), escaped: escaped.substring(0, 100) });
     return escaped;
+  }
+
+  private escapeHtmlAttribute(input: string): string {
+    // Conservative escaping for attribute values
+    return input
+      .replace(/&/g, "&amp;")
+      .replace(/"/g, "&quot;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
   }
 
   // Read a single column's values (default: column A). Skips the header row.

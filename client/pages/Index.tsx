@@ -87,6 +87,7 @@ export default function Index() {
               name: dbCampaign.name,
               stages: stages,
               lastRunAt: dbCampaign.lastRunAt,
+              nextRunAt: dbCampaign.nextRunAt,
               status: dbCampaign.status || "Pending", // Use database status or default to Pending
             };
           });
@@ -101,6 +102,9 @@ export default function Index() {
     };
     
     loadCampaigns();
+  // Poll every 15s to reflect scheduler updates (nextRunAt/status)
+  const interval = setInterval(loadCampaigns, 15000);
+  return () => clearInterval(interval);
   }, []);
   
   const [campaigns, setCampaigns] = useState<Campaign[]>(() => buildDefaultCampaigns());
@@ -277,6 +281,7 @@ export default function Index() {
               name: dbCampaign.name,
               stages: stages,
               lastRunAt: dbCampaign.lastRunAt,
+              nextRunAt: dbCampaign.nextRunAt,
               status: dbCampaign.status || "Pending", // Use database status or default to Pending
             };
           });
@@ -304,8 +309,17 @@ export default function Index() {
 
     // Check if campaign is already active
     if (campaign.status === "Active") {
-      // Toggle to inactive state - don't run the message sending flow
+      // Toggle to inactive state in backend and UI - don't run the message sending flow
       console.log("Campaign is active, toggling to inactive");
+      try {
+        await fetch(`http://localhost:3001/api/campaigns/${campaign.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: "inactive" }),
+        });
+      } catch (e) {
+        console.warn("Failed to persist inactive status, continuing UI update", e);
+      }
       setCampaigns((previous) =>
         previous.map((c) => {
           if (c.id !== campaignId) return c;
@@ -315,7 +329,6 @@ export default function Index() {
           };
         }),
       );
-      
       toast.success("Campaign deactivated", {
         description: `${campaign.name} has been set to pending.`,
       });

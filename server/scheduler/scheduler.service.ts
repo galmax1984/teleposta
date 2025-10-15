@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { GoogleSheetsService } from '../services/google-sheets.service';
 import { db } from '../database/database';
 import { campaigns, logs } from '../database/schema';
@@ -6,8 +6,37 @@ import { eq } from 'drizzle-orm';
 import { fromZonedTime, toZonedTime, format } from 'date-fns-tz';
 
 @Injectable()
-export class SchedulerService {
+export class SchedulerService implements OnModuleInit, OnModuleDestroy {
+  private intervalHandle: NodeJS.Timeout | null = null;
+  private isRunning = false;
+
   constructor() {}
+
+  onModuleInit() {
+    // Run every 60 seconds; prevent overlaps with isRunning guard
+    if (!this.intervalHandle) {
+      this.intervalHandle = setInterval(async () => {
+        if (this.isRunning) return;
+        this.isRunning = true;
+        try {
+          await this.checkAndRunDueCampaigns();
+        } catch (error) {
+          console.error('Scheduler loop error:', error);
+        } finally {
+          this.isRunning = false;
+        }
+      }, 15_000);
+      console.log('⏱️ Scheduler loop started (every 15s)');
+    }
+  }
+
+  onModuleDestroy() {
+    if (this.intervalHandle) {
+      clearInterval(this.intervalHandle);
+      this.intervalHandle = null;
+      console.log('⏹️ Scheduler loop stopped');
+    }
+  }
 
   // Manual method to check and run due campaigns (can be called by cron job or manually)
   async checkAndRunDueCampaigns() {
@@ -40,6 +69,21 @@ export class SchedulerService {
   private async runCampaign(campaign: any) {
     try {
       console.log(`🚀 Running campaign: ${campaign.name}`);
+      // Re-check latest status to avoid running after deactivation
+      const latest = await db
+        .select()
+        .from(campaigns)
+        .where(eq(campaigns.id, campaign.id));
+      const fresh = latest[0];
+      if (!fresh || fresh.status !== 'active') {
+        console.log('🔕 Skipping run: campaign not active anymore');
+        return;
+      }
+      const now = new Date();
+      if (fresh.nextRunAt && new Date(fresh.nextRunAt) > now) {
+        console.log('⏩ Skipping run: nextRunAt moved to the future');
+        return;
+      }
       
       // Extract configurations
       const sourceConfig = campaign.sourceConfig as any;
@@ -151,14 +195,23 @@ export class SchedulerService {
       if (mode === 'daily') {
         const hour = dailyHour || 20;
         const randomMinutes = dailyRandomMinutes || 0;
+        // Build the start date at the configured hour in the configured timezone
+        const startInTimezone = new Date(toZonedTime(new Date(`${startDate}T00:00:00`), timezone));
+        startInTimezone.setHours(hour, 0, 0, 0);
         
-        // Calculate next run time for tomorrow in the configured timezone
-        const tomorrowInTimezone = new Date(nowInTimezone);
-        tomorrowInTimezone.setDate(tomorrowInTimezone.getDate() + 1);
-        tomorrowInTimezone.setHours(hour, 0, 0, 0);
+        // If start date-time is in the future relative to now, use it; otherwise pick the next daily occurrence
+        let targetInTimezone = new Date(startInTimezone);
+        if (targetInTimezone <= nowInTimezone) {
+          // Use today at the hour, or tomorrow if already passed
+          targetInTimezone = new Date(nowInTimezone);
+          targetInTimezone.setHours(hour, 0, 0, 0);
+          if (targetInTimezone <= nowInTimezone) {
+            targetInTimezone.setDate(targetInTimezone.getDate() + 1);
+          }
+        }
         
         // Add randomization
-        const randomizedTime = this.addRandomization(tomorrowInTimezone, randomMinutes);
+        const randomizedTime = this.addRandomization(targetInTimezone, randomMinutes);
         
         // Convert back to UTC for storage
         const utcTime = fromZonedTime(randomizedTime, timezone);
@@ -171,11 +224,27 @@ export class SchedulerService {
       if (mode === 'hourly') {
         const intervalHours = everyHours || 1;
         const randomMinutes = hourlyRandomMinutes || 0;
+        // Build start date-time (at 00:00 start day) in timezone
+        const startDayInTimezone = new Date(toZonedTime(new Date(`${startDate}T00:00:00`), timezone));
         
-        // Calculate next run time based on hourly interval in the configured timezone
-        const nextRunInTimezone = new Date(nowInTimezone);
-        nextRunInTimezone.setMinutes(0, 0, 0); // Round down to the hour
-        nextRunInTimezone.setHours(nextRunInTimezone.getHours() + intervalHours);
+        let base = new Date(nowInTimezone);
+        if (nowInTimezone < startDayInTimezone) {
+          // If start date is in the future, begin from start date
+          base = new Date(startDayInTimezone);
+        }
+        
+        // Round base up to the next top-of-hour
+        base.setMinutes(0, 0, 0);
+        if (base <= nowInTimezone) {
+          base.setHours(base.getHours() + 1);
+        }
+        
+        // Advance to align with the interval relative to start day
+        const hoursSinceStart = Math.max(0, Math.ceil((base.getTime() - startDayInTimezone.getTime()) / (60 * 60 * 1000)));
+        const remainder = hoursSinceStart % intervalHours;
+        const add = remainder === 0 ? 0 : (intervalHours - remainder);
+        const nextRunInTimezone = new Date(base);
+        nextRunInTimezone.setHours(nextRunInTimezone.getHours() + add);
         
         // Add randomization
         const randomizedTime = this.addRandomization(nextRunInTimezone, randomMinutes);
