@@ -7,6 +7,7 @@ export const MAX_CAMPAIGNS = 5;
 export const SOURCE_OPTIONS = ["Spreadsheet", "Airtable"] as const;
 export type SourceOption = (typeof SOURCE_OPTIONS)[number];
 
+// Deprecated, kept for backward compatibility mapping
 export const SCHEDULER_OPTIONS = ["Every 5h", "Everyday at 20:00"] as const;
 export type SchedulerOption = (typeof SCHEDULER_OPTIONS)[number];
 
@@ -63,9 +64,15 @@ export interface SourceStage extends StageBase {
 export interface SchedulerStage extends StageBase {
   type: "scheduler";
   config: {
-    cadence: SchedulerOption;
-    timezone: string;
-    startDate: string;
+    mode: "daily" | "hourly";
+    timezone: string; // IANA timezone string
+    // daily mode config
+    dailyHour?: number; // 0-23
+    dailyRandomMinutes?: number; // 0-120
+    // hourly mode config
+    everyHours?: number; // >=1
+    hourlyRandomMinutes?: number; // 0-120
+    startDate?: string; // YYYY-MM-DD
   };
 }
 
@@ -93,6 +100,7 @@ export interface Campaign {
   name: string;
   stages: Stage[];
   lastRunAt?: string | null;
+  nextRunAt?: string | null;
   status?: "Pending" | "Active";
 }
 
@@ -122,8 +130,10 @@ export const createStage = (type: StageType, campaignId?: string): Stage => {
         type,
         completed: false,
         config: {
-          cadence: SCHEDULER_OPTIONS[0],
-          timezone: "UTC",
+          mode: "daily",
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+          dailyHour: 20,
+          dailyRandomMinutes: 0,
           startDate: new Date().toISOString().slice(0, 10),
         },
       };
@@ -182,8 +192,20 @@ export const isStageConfigComplete = (stage: Stage): boolean => {
       // For Airtable, basic validation (can be extended later)
       return true;
       
-    case "scheduler":
-      return Boolean(stage.config.timezone?.trim()?.length > 0) && Boolean(stage.config.cadence);
+    case "scheduler": {
+      const tzOk = Boolean(stage.config.timezone?.trim()?.length > 0);
+      if (stage.config.mode === "daily") {
+        const h = stage.config.dailyHour;
+        const r = stage.config.dailyRandomMinutes ?? 0;
+        return tzOk && typeof h === 'number' && h >= 0 && h <= 23 && r >= 0 && r <= 120;
+      }
+      if (stage.config.mode === "hourly") {
+        const eh = stage.config.everyHours;
+        const r = stage.config.hourlyRandomMinutes ?? 0;
+        return tzOk && typeof eh === 'number' && eh >= 1 && r >= 0 && r <= 120;
+      }
+      return false;
+    }
     case "target":
       if (stage.config.channel === 'Telegram') {
         const tg = stage.config.telegram;
@@ -204,7 +226,9 @@ export const canAddStage = (stages: Stage[]): boolean => {
 
 export const isCampaignReady = (campaign: Campaign): boolean =>
   campaign.stages.length === MAX_STAGES &&
-  campaign.stages.every((stage) => stage.completed && isStageConfigComplete(stage));
+  campaign.stages.every((stage) => stage.completed && isStageConfigComplete(stage)) &&
+  // Ensure all 3 stage types exist
+  STAGE_ORDER.every((type) => campaign.stages.some((s) => s.type === type));
 
 export const getStageTitle = (type: StageType): string => {
   switch (type) {
@@ -224,7 +248,9 @@ export const getStageHeadline = (stage: Stage): string => {
     case "source":
       return stage.config.sourceType;
     case "scheduler":
-      return stage.config.cadence;
+      return stage.config.mode === 'daily'
+        ? `Daily at ${String(stage.config.dailyHour ?? 0).padStart(2, '0')}:00`
+        : `Every ${stage.config.everyHours ?? 1}h`;
     case "target":
       return stage.config.channel;
     default:
@@ -238,8 +264,13 @@ export const getStageSupportingText = (stage: Stage): string => {
       return stage.config.datasetName
         ? `${stage.config.datasetName} · ${stage.config.syncMode}`
         : `Define the dataset and sync mode.`;
-    case "scheduler":
-      return `Timezone: ${stage.config.timezone || 'UTC'} · Start ${stage.config.startDate || 'Not set'}`;
+    case "scheduler": {
+      const tz = stage.config.timezone || 'UTC';
+      if (stage.config.mode === 'daily') {
+        return `Daily at ${String(stage.config.dailyHour ?? 0).padStart(2, '0')}:00 ± ${stage.config.dailyRandomMinutes ?? 0}m · TZ ${tz}`;
+      }
+      return `Every ${stage.config.everyHours ?? 1}h ± ${stage.config.hourlyRandomMinutes ?? 0}m · TZ ${tz}`;
+    }
     case "target":
       return stage.config.destination
         ? `${stage.config.destination} · ${stage.config.autoPublish}`

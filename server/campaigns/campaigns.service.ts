@@ -107,8 +107,12 @@ export class CampaignsService {
         sourceConfig: stage.config || {},
       } as Partial<Campaign>);
     } else if (stage?.type === 'scheduler') {
+      const scheduleConfig = stage.config || {};
+      const nextRunAt = this.computeNextRunAt(scheduleConfig);
+      
       await this.update(campaignId, {
-        scheduleConfig: stage.config || {},
+        scheduleConfig,
+        nextRunAt,
       } as Partial<Campaign>);
     } else if (stage?.type === 'target') {
       await this.update(campaignId, {
@@ -133,5 +137,73 @@ export class CampaignsService {
     }
     // Fallback: If possible, check if result is truthy.
     return !!result;
+  }
+
+  private computeNextRunAt(scheduleConfig: any): Date | null {
+    try {
+      const { mode, timezone, startDate, dailyHour, dailyRandomMinutes, everyHours, hourlyRandomMinutes } = scheduleConfig;
+      
+      if (!mode || !timezone || !startDate) {
+        return null;
+      }
+
+      const now = new Date();
+
+      if (mode === 'daily') {
+        const hour = dailyHour || 20;
+        const randomMinutes = dailyRandomMinutes || 0;
+
+        // Build the start date at the configured hour (local server time; timezone handling occurs in controller/service using date-fns-tz)
+        const start = new Date(`${startDate}T00:00:00`);
+        start.setHours(hour, 0, 0, 0);
+
+        let target = new Date(start);
+        if (target <= now) {
+          target = new Date();
+          target.setHours(hour, 0, 0, 0);
+          if (target <= now) {
+            target.setDate(target.getDate() + 1);
+          }
+        }
+
+        return this.addRandomization(target, randomMinutes);
+      }
+      
+      if (mode === 'hourly') {
+        const intervalHours = everyHours || 1;
+        const randomMinutes = hourlyRandomMinutes || 0;
+
+        const startDay = new Date(`${startDate}T00:00:00`);
+        let base = new Date(now);
+        if (now < startDay) {
+          base = new Date(startDay);
+        }
+        base.setMinutes(0, 0, 0);
+        if (base <= now) {
+          base.setHours(base.getHours() + 1);
+        }
+        const hoursSinceStart = Math.max(0, Math.ceil((base.getTime() - startDay.getTime()) / (60 * 60 * 1000)));
+        const remainder = hoursSinceStart % intervalHours;
+        const add = remainder === 0 ? 0 : (intervalHours - remainder);
+        const nextRun = new Date(base);
+        nextRun.setHours(nextRun.getHours() + add);
+
+        return this.addRandomization(nextRun, randomMinutes);
+      }
+      
+      return null;
+    } catch (error) {
+      console.error('Error computing next run time:', error);
+      return null;
+    }
+  }
+
+  private addRandomization(baseTime: Date, randomMinutes: number): Date {
+    if (randomMinutes <= 0) {
+      return baseTime;
+    }
+    
+    const randomMs = Math.random() * randomMinutes * 60 * 1000;
+    return new Date(baseTime.getTime() + randomMs);
   }
 }

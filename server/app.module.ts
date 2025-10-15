@@ -6,6 +6,7 @@ import { SettingsModule } from './settings/settings.module';
 import { DatabaseModule } from './database/database.module';
 import { GoogleSheetsModule } from './google-sheets/google-sheets.module';
 import { TelegramModule } from './telegram/telegram.module';
+import { SchedulerModule } from './scheduler/scheduler.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { TelegramModule } from './telegram/telegram.module';
     SettingsModule,
     GoogleSheetsModule,
     TelegramModule,
+    SchedulerModule,
   ],
 })
 export class AppModule {}

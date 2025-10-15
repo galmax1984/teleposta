@@ -50,8 +50,8 @@ const getStageFormHeader = (stage: Stage) => {
       };
     case "scheduler":
       return {
-        title: "Cadence", 
-        description: "Set how often the automation should run."
+        title: "", 
+        description: ""
       };
     case "target":
       return {
@@ -177,13 +177,40 @@ export const StageSettingsPanel = ({ campaign, stage, onSaveStage }: StageSettin
                         });
                       }}
                       className={cn(
-                        "rounded-xl border px-3 py-2 text-sm font-light transition w-36 text-center",
-                        option === (stage as SourceStage).config.sourceType
+                        "rounded-xl border px-2 py-1 text-xs font-light transition w-24 text-center",
+                        option === (draftConfig as SourceStage["config"]).sourceType
                           ? "border-stage-source bg-stage-source/15 text-stage-source"
                           : "border-border/70 text-foreground/70 hover:border-foreground/70 hover:text-foreground",
                       )}
                     >
                       {option}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Scheduler mode selection on the right side of header for scheduler stages */}
+              {stage.type === "scheduler" && (
+                <div className="flex gap-2">
+                  {(["daily", "hourly"] as const).map((option) => (
+                    <button
+                      key={option}
+                      type="button"
+                      onClick={() => {
+                        const schedulerStage = stage as SchedulerStage;
+                        handleConfigChange({
+                          ...schedulerStage.config,
+                          mode: option,
+                        });
+                      }}
+                      className={cn(
+                        "rounded-xl border px-2 py-1 text-xs font-light transition w-24 text-center",
+                        option === (draftConfig as SchedulerStage["config"]).mode
+                          ? "border-stage-scheduler bg-stage-scheduler/15 text-stage-scheduler"
+                          : "border-border/70 text-foreground/70 hover:border-foreground/70 hover:text-foreground",
+                      )}
+                    >
+                      {option === 'daily' ? 'Daily' : 'Hourly'}
                     </button>
                   ))}
                 </div>
@@ -204,8 +231,8 @@ export const StageSettingsPanel = ({ campaign, stage, onSaveStage }: StageSettin
                         });
                       }}
                       className={cn(
-                        "rounded-xl border px-3 py-2 text-sm font-light transition w-36 text-center",
-                        option === (stage as TargetStage).config.channel
+                        "rounded-xl border px-2 py-1 text-xs font-light transition w-24 text-center",
+                        option === (draftConfig as TargetStage["config"]).channel
                           ? "border-stage-target bg-stage-target/15 text-stage-target"
                           : "border-border/70 text-foreground/70 hover:border-foreground/70 hover:text-foreground",
                       )}
@@ -246,7 +273,11 @@ export const StageSettingsPanel = ({ campaign, stage, onSaveStage }: StageSettin
             <SourceForm value={draftConfig as SourceStage["config"]} onChange={handleConfigChange} />
           )}
           {isScheduler(stage) && (
-            <SchedulerForm value={draftConfig as SchedulerStage["config"]} onChange={handleConfigChange} />
+            <SchedulerForm
+              value={draftConfig as SchedulerStage["config"]}
+              onChange={handleConfigChange}
+              scheduledNextRunAt={campaign?.nextRunAt}
+            />
           )}
           {isTarget(stage) && (
             <TargetForm value={draftConfig as TargetStage["config"]} onChange={handleConfigChange} />
@@ -278,6 +309,7 @@ export const StageSettingsPanel = ({ campaign, stage, onSaveStage }: StageSettin
 type FormProps<T> = {
   value: T;
   onChange: (next: Stage["config"]) => void;
+  scheduledNextRunAt?: string | null;
 };
 
 const SourceForm = ({ value, onChange }: FormProps<SourceStage["config"]>) => {
@@ -545,52 +577,250 @@ const SourceForm = ({ value, onChange }: FormProps<SourceStage["config"]>) => {
   );
 };
 
-const SchedulerForm = ({ value, onChange }: FormProps<SchedulerStage["config"]>) => {
+const SchedulerForm = ({ value, onChange, scheduledNextRunAt }: FormProps<SchedulerStage["config"]>) => {
   const update = (patch: Partial<SchedulerStage["config"]>) =>
     onChange({ ...value, ...patch });
 
+  const timezones = [
+    "UTC",
+    "America/New_York",
+    "America/Chicago", 
+    "America/Denver",
+    "America/Los_Angeles",
+    "Europe/London",
+    "Europe/Paris",
+    "Europe/Berlin",
+    "Europe/Rome",
+    "Asia/Tokyo",
+    "Asia/Shanghai",
+    "Asia/Kolkata",
+    "Australia/Sydney",
+    "Pacific/Auckland",
+  ];
+
+  // Local state for input values to allow free typing
+  const [dailyHourInput, setDailyHourInput] = useState<string>(value.dailyHour?.toString() ?? '');
+
+  // Update local input when value changes from outside
+  useEffect(() => {
+    setDailyHourInput(value.dailyHour?.toString() ?? '');
+  }, [value.dailyHour]);
+
+  const handleDailyHourChange = (inputValue: string) => {
+    setDailyHourInput(inputValue);
+    
+    if (inputValue === '') {
+      update({ dailyHour: undefined });
+      return;
+    }
+    
+    const hour = parseInt(inputValue);
+    if (!isNaN(hour) && hour >= 0 && hour <= 23) {
+      update({ dailyHour: hour });
+    }
+  };
+
+  const handleDailyHourBlur = () => {
+    // On blur, validate and set to default if invalid
+    if (dailyHourInput === '') {
+      update({ dailyHour: undefined });
+      return;
+    }
+    
+    const hour = parseInt(dailyHourInput);
+    if (isNaN(hour) || hour < 0 || hour > 23) {
+      // Reset to default if invalid
+      setDailyHourInput('20');
+      update({ dailyHour: 20 });
+    }
+  };
+
+  // Helpers to compute preview in selected timezone (client-side, no libs)
+  const getDateInTimeZone = (date: Date, timeZone: string): Date => {
+    // Converts the given date to the same wall-clock time in the provided timezone
+    const inv = new Date(date.toLocaleString('en-US', { timeZone }));
+    const diff = date.getTime() - inv.getTime();
+    return new Date(date.getTime() - diff);
+  };
+
+  // Preview intentionally ignores randomization to match deterministic display; server applies random offset
+  const addRandomMinutes = (date: Date, _minutes: number) => date;
+
+  const nextRunPreview = useMemo(() => {
+    try {
+      const mode = value.mode;
+      const tz = value.timezone || 'UTC';
+      const startDate = value.startDate;
+      if (!mode || !tz || !startDate) return '';
+
+      const now = new Date();
+      const nowInTz = getDateInTimeZone(now, tz);
+
+      if (mode === 'daily') {
+        const hour = typeof value.dailyHour === 'number' ? value.dailyHour : 20;
+        const random = value.dailyRandomMinutes || 0;
+
+        const target = new Date(nowInTz);
+        target.setHours(hour, 0, 0, 0);
+
+        // Ensure startDate is respected
+        const start = getDateInTimeZone(new Date(startDate + 'T00:00:00'), tz);
+        if (target < start) {
+          target.setTime(start.getTime());
+          target.setHours(hour, 0, 0, 0);
+        }
+
+        if (target <= nowInTz) {
+          target.setDate(target.getDate() + 1);
+        }
+
+        const preview = addRandomMinutes(target, random);
+        const local = preview.toLocaleString(undefined, { timeZone: tz, hour12: false });
+        const utc = new Date(preview.getTime()).toISOString().replace('T', ' ').replace('Z', ' UTC');
+        return `${local} (${tz}) · ${utc}`;
+      }
+
+      if (mode === 'hourly') {
+        const every = value.everyHours || 1;
+        const random = value.hourlyRandomMinutes || 0;
+
+        const target = new Date(nowInTz);
+        target.setMinutes(0, 0, 0);
+        target.setHours(target.getHours() + every);
+
+        const preview = addRandomMinutes(target, random);
+        const local = preview.toLocaleString(undefined, { timeZone: tz, hour12: false });
+        const utc = new Date(preview.getTime()).toISOString().replace('T', ' ').replace('Z', ' UTC');
+        return `${local} (${tz}) · ${utc}`;
+      }
+
+      return '';
+    } catch {
+      return '';
+    }
+  }, [value.mode, value.timezone, value.startDate, value.dailyHour, value.dailyRandomMinutes, value.everyHours, value.hourlyRandomMinutes]);
+
+  const scheduledPreview = useMemo(() => {
+    try {
+      if (!scheduledNextRunAt) return '';
+      const tz = value.timezone || 'UTC';
+      const scheduled = new Date(scheduledNextRunAt);
+      const local = scheduled.toLocaleString(undefined, { timeZone: tz, hour12: false });
+      const utc = new Date(scheduled.getTime()).toISOString().replace('T', ' ').replace('Z', ' UTC');
+      return `${local} (${tz}) · ${utc}`;
+    } catch {
+      return '';
+    }
+  }, [scheduledNextRunAt, value.timezone]);
+
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-4">
+      {/* Mode Selection moved to header */}
+
+      {/* Daily Mode Settings */}
+      {value.mode === "daily" && (
+        <section className="grid gap-3">
+          <label className="flex flex-col text-xs text-foreground">
+            Daily Hour (0-23)
+            <input
+              type="text"
+              value={dailyHourInput}
+              onChange={(event) => handleDailyHourChange(event.target.value)}
+              onBlur={handleDailyHourBlur}
+              placeholder="20"
+              className="mt-1 border border-border/70 bg-stage-inactive px-3 py-2 text-sm text-foreground focus:border-border focus:outline-none focus:ring-0"
+            />
+            {value.dailyHour !== undefined && (value.dailyHour < 0 || value.dailyHour > 23) && (
+              <p className="mt-1 text-xs text-red-500">
+                Hour must be between 0 and 23
+              </p>
+            )}
+          </label>
+          <label className="flex flex-col text-xs text-foreground">
+            Random Minutes (0-120)
+            <input
+              type="number"
+              min="0"
+              max="120"
+              value={value.dailyRandomMinutes || 0}
+              onChange={(event) => update({ dailyRandomMinutes: parseInt(event.target.value) || 0 })}
+              className="mt-1 border border-border/70 bg-stage-inactive px-3 py-2 text-sm text-foreground focus:border-border focus:outline-none focus:ring-0"
+            />
+            <p className="mt-1 text-xs text-foreground/60">
+              Random delay to avoid predictable posting times
+            </p>
+          </label>
+        </section>
+      )}
+
+      {/* Hourly Mode Settings */}
+      {value.mode === "hourly" && (
+        <section className="grid gap-3">
+          <label className="flex flex-col text-xs text-foreground">
+            Every Hours (1+)
+            <input
+              type="number"
+              min="1"
+              value={value.everyHours || 1}
+              onChange={(event) => update({ everyHours: parseInt(event.target.value) || 1 })}
+              className="mt-1 border border-border/70 bg-stage-inactive px-3 py-2 text-sm text-foreground focus:border-border focus:outline-none focus:ring-0"
+            />
+          </label>
+          <label className="flex flex-col text-xs text-foreground">
+            Random Minutes (0-120)
+            <input
+              type="number"
+              min="0"
+              max="120"
+              value={value.hourlyRandomMinutes || 0}
+              onChange={(event) => update({ hourlyRandomMinutes: parseInt(event.target.value) || 0 })}
+              className="mt-1 border border-border/70 bg-stage-inactive px-3 py-2 text-sm text-foreground focus:border-border focus:outline-none focus:ring-0"
+            />
+            <p className="mt-1 text-xs text-foreground/60">
+              Random delay to avoid predictable posting times
+            </p>
+          </label>
+        </section>
+      )}
+
+      {/* Timezone Selection */}
       <section>
-        <div className="grid grid-cols-2 gap-3">
-          {SCHEDULER_OPTIONS.map((option) => (
-            <button
-              key={option}
-              type="button"
-              onClick={() => update({ cadence: option })}
-              className={cn(
-                "rounded-2xl border px-4 py-3 text-left text-sm font-medium transition",
-                option === value.cadence
-                  ? "border-stage-scheduler bg-stage-scheduler/20 text-stage-scheduler"
-                  : "border-border/70 text-foreground/70 hover:border-foreground/70 hover:text-foreground",
-              )}
-            >
-              {option}
-            </button>
-          ))}
-        </div>
+        <label className="flex flex-col text-xs text-foreground">
+          Timezone
+          <select
+            value={value.timezone || "UTC"}
+            onChange={(event) => update({ timezone: event.target.value })}
+            className="mt-1 border border-border/70 bg-stage-inactive px-3 py-2 text-sm text-foreground focus:border-border focus:outline-none focus:ring-0"
+          >
+            {timezones.map((tz) => (
+              <option key={tz} value={tz}>
+                {tz}
+              </option>
+            ))}
+          </select>
+        </label>
       </section>
 
-      <section className="grid gap-4">
-        <label className="flex flex-col text-sm text-foreground">
-          Timezone
-          <input
-            value={value.timezone}
-            onChange={(event) => update({ timezone: event.target.value })}
-            placeholder="e.g. America/New_York"
-            className="mt-2 border border-border/70 bg-stage-inactive px-4 py-3 text-sm text-foreground placeholder:text-foreground/40 focus:border-border focus:outline-none focus:ring-0"
-          />
-        </label>
-        <label className="flex flex-col text-sm text-foreground">
-          Start date
+      {/* Start Date */}
+      <section>
+        <label className="flex flex-col text-xs text-foreground">
+          Start Date
           <input
             type="date"
-            value={value.startDate}
+            value={value.startDate || new Date().toISOString().slice(0, 10)}
             onChange={(event) => update({ startDate: event.target.value })}
-            className="mt-2 border border-border/70 bg-stage-inactive px-4 py-3 text-sm text-foreground focus:border-border focus:outline-none focus:ring-0"
+            className="mt-1 border border-border/70 bg-stage-inactive px-3 py-2 text-sm text-foreground focus:border-border focus:outline-none focus:ring-0"
           />
         </label>
       </section>
+
+      {scheduledPreview && (
+        <section>
+          <div className="text-xs text-foreground/70">
+            Next run: <span className="text-foreground font-medium">{scheduledPreview.split(' · ')[0]}</span>
+          </div>
+        </section>
+      )}
     </div>
   );
 };

@@ -1,8 +1,7 @@
 import { Controller, Get, Post, Body, Patch, Param, Delete, Inject } from '@nestjs/common';
-import { GoogleSheetsService } from '../services/google-sheets.service';
-import { TelegramService } from '../telegram/telegram.service';
 import { CampaignsService } from './campaigns.service';
 import { type Campaign, type NewCampaign } from '../database/schema';
+import { fromZonedTime, toZonedTime, format } from 'date-fns-tz';
 
 @Controller('api/campaigns')
 export class CampaignsController {
@@ -47,11 +46,9 @@ export class CampaignsController {
       campaignName: string;
     },
   ) {
-    console.log("=== RUN-ONCE ENDPOINT CALLED ===");
+    console.log("=== RUN BUTTON CLICKED ===");
     console.log("Request body received:", body);
     console.log("Campaign name received:", body.campaignName);
-    console.log("Type of campaign name:", typeof body.campaignName);
-    console.log("Campaign name length:", body.campaignName?.length);
     
     try {
       // Find the campaign by name
@@ -64,91 +61,109 @@ export class CampaignsController {
         return { success: false, message: 'Campaign not found' };
       }
 
-      // Extract Google Sheets configuration from source config
-      const sourceConfig = campaign.sourceConfig as any;
-      console.log("Source config:", sourceConfig);
+      // Extract scheduler configuration
+      const scheduleConfig = campaign.scheduleConfig as any;
+      console.log("Schedule config:", scheduleConfig);
       
-      if (!sourceConfig?.googleSheets) {
-        console.log("Google Sheets configuration not found");
-        return { success: false, message: 'Google Sheets configuration not found' };
+      if (!scheduleConfig || !scheduleConfig.mode) {
+        console.log("Scheduler configuration not found");
+        return { success: false, message: 'Scheduler configuration not found' };
       }
 
-      const sheetsConfig = sourceConfig.googleSheets;
-      console.log("Sheets config:", {
-        hasCredentials: !!sheetsConfig.credentials,
-        spreadsheetId: sheetsConfig.spreadsheetId,
-        sheetName: sheetsConfig.sheetName,
-      });
-      
-      if (!sheetsConfig.credentials || !sheetsConfig.spreadsheetId || !sheetsConfig.sheetName) {
-        console.log("Incomplete Google Sheets configuration");
-        return { success: false, message: 'Incomplete Google Sheets configuration' };
-      }
+      // Recalculate next run time based on scheduler settings
+      console.log("Recalculating next run time...");
+      const nextRunAt = this.computeNextRunAt(scheduleConfig);
+      console.log("Next run time calculated:", nextRunAt);
 
-      // Extract Telegram configuration from target config
-      const targetConfig = campaign.targetConfig as any;
-      console.log("Target config:", targetConfig);
-      
-      if (!targetConfig?.telegram) {
-        console.log("Telegram configuration not found");
-        return { success: false, message: 'Telegram configuration not found' };
-      }
+      // Update campaign with new next run time
+      await this.campaignsService.update(campaign.id, {
+        nextRunAt,
+        status: 'active', // Set to active when Run is clicked
+      } as Partial<Campaign>);
 
-      const telegramConfig = targetConfig.telegram;
-      console.log("Telegram config:", {
-        hasBotToken: !!telegramConfig.botToken,
-        chatIdOrUsername: telegramConfig.chatIdOrUsername,
-      });
+      console.log("Campaign updated with next run time:", nextRunAt);
       
-      if (!telegramConfig.botToken || !telegramConfig.chatIdOrUsername) {
-        console.log("Incomplete Telegram configuration");
-        return { success: false, message: 'Incomplete Telegram configuration' };
-      }
-
-      // Read first value of column A (including header)
-      console.log("Creating GoogleSheetsService and reading column A...");
-      const sheetsSvc = new GoogleSheetsService(sheetsConfig.credentials);
-      const values = await sheetsSvc.getColumnValues({
-        spreadsheetId: sheetsConfig.spreadsheetId,
-        sheetName: sheetsConfig.sheetName,
-        column: 'A',
-        skipHeader: false,
-      });
-      
-      console.log("Column A values:", values);
-      const text = values[0] || '';
-      if (!text) {
-        console.log("A1 cell is empty");
-        return { success: false, message: 'A1 is empty' };
-      }
-
-      console.log("Posting to Telegram:", { text: text.substring(0, 100) + "..." });
-      // Post to telegram
-      const base = `https://api.telegram.org/bot${encodeURIComponent(telegramConfig.botToken)}`;
-      const resp = await fetch(`${base}/sendMessage`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          chat_id: telegramConfig.chatIdOrUsername, 
-          text,
-          parse_mode: telegramConfig.parseMode,
-          disable_web_page_preview: telegramConfig.disableWebPagePreview,
-          message_thread_id: telegramConfig.messageThreadId,
-        }),
-      }).then((r) => r.json());
-
-      console.log("Telegram API response:", resp);
-      if (!resp?.ok) {
-        console.log("Telegram API failed:", resp?.description);
-        return { success: false, message: resp?.description || 'Failed to send message' };
-      }
-      
-      console.log("Success! Message sent to Telegram");
-      return { success: true, message: 'Message sent successfully' };
+      return { 
+        success: true, 
+        message: `Campaign scheduled. Next run: ${nextRunAt?.toLocaleString()}`,
+        nextRunAt: nextRunAt?.toISOString()
+      };
     } catch (error: any) {
       console.error("Error in run-once:", error);
       return { success: false, message: `Error: ${error.message}` };
     }
+  }
+
+  private computeNextRunAt(scheduleConfig: any): Date | null {
+    try {
+      const { mode, timezone, startDate, dailyHour, dailyRandomMinutes, everyHours, hourlyRandomMinutes } = scheduleConfig;
+      
+      if (!mode || !timezone || !startDate) {
+        return null;
+      }
+
+      // Get current time in the configured timezone
+      const nowInTimezone = toZonedTime(new Date(), timezone);
+      console.log(`Current time in ${timezone}:`, format(nowInTimezone, 'yyyy-MM-dd HH:mm:ss', { timeZone: timezone }));
+
+      if (mode === 'daily') {
+        const hour = dailyHour || 20;
+        const randomMinutes = dailyRandomMinutes || 0;
+        
+        // Create the target time in the configured timezone
+        const targetTimeInTimezone = new Date(nowInTimezone);
+        targetTimeInTimezone.setHours(hour, 0, 0, 0);
+        
+        // If the target time has passed today, schedule for tomorrow
+        if (targetTimeInTimezone <= nowInTimezone) {
+          targetTimeInTimezone.setDate(targetTimeInTimezone.getDate() + 1);
+        }
+        
+        // Add randomization
+        const randomizedTime = this.addRandomization(targetTimeInTimezone, randomMinutes);
+        
+        // Convert back to UTC for storage
+        const utcTime = fromZonedTime(randomizedTime, timezone);
+        console.log(`Next run time in ${timezone}:`, format(randomizedTime, 'yyyy-MM-dd HH:mm:ss', { timeZone: timezone }));
+        console.log(`Next run time in UTC:`, format(utcTime, 'yyyy-MM-dd HH:mm:ss', { timeZone: 'UTC' }));
+        
+        return utcTime;
+      }
+      
+      if (mode === 'hourly') {
+        const intervalHours = everyHours || 1;
+        const randomMinutes = hourlyRandomMinutes || 0;
+        
+        // Calculate next run time based on hourly interval in the configured timezone
+        const nextRunInTimezone = new Date(nowInTimezone);
+        nextRunInTimezone.setMinutes(0, 0, 0); // Round down to the hour
+        nextRunInTimezone.setHours(nextRunInTimezone.getHours() + intervalHours);
+        
+        // Add randomization
+        const randomizedTime = this.addRandomization(nextRunInTimezone, randomMinutes);
+        
+        // Convert back to UTC for storage
+        const utcTime = fromZonedTime(randomizedTime, timezone);
+        console.log(`Next run time in ${timezone}:`, format(randomizedTime, 'yyyy-MM-dd HH:mm:ss', { timeZone: timezone }));
+        console.log(`Next run time in UTC:`, format(utcTime, 'yyyy-MM-dd HH:mm:ss', { timeZone: 'UTC' }));
+        
+        return utcTime;
+      }
+      
+      return null;
+    } catch (error) {
+      console.error('Error computing next run time:', error);
+      return null;
+    }
+  }
+
+  private addRandomization(baseTime: Date, randomMinutes: number): Date {
+    if (randomMinutes <= 0) {
+      return baseTime;
+    }
+    
+    const randomMs = Math.random() * randomMinutes * 60 * 1000;
+    return new Date(baseTime.getTime() + randomMs);
   }
 
   @Delete(':id')
