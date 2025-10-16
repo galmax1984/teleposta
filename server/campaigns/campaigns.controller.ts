@@ -1,7 +1,8 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, Inject } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, Inject, UseGuards, Req } from '@nestjs/common';
 import { CampaignsService } from './campaigns.service';
 import { type Campaign, type NewCampaign } from '../database/schema';
 import { fromZonedTime, toZonedTime, format } from 'date-fns-tz';
+import { JwtAuthGuard } from '../auth/jwt.guard';
 
 @Controller('api/campaigns')
 export class CampaignsController {
@@ -15,32 +16,44 @@ export class CampaignsController {
   }
 
   @Post()
-  create(@Body() createCampaignDto: NewCampaign) {
-    return this.campaignsService.create(createCampaignDto);
+  @UseGuards(JwtAuthGuard)
+  create(@Req() req: any, @Body() createCampaignDto: NewCampaign) {
+    const userId = req.user?.userId;
+    return this.campaignsService.create({ ...createCampaignDto, userId } as any);
   }
 
   @Get()
-  findAll() {
-    return this.campaignsService.findAll();
+  @UseGuards(JwtAuthGuard)
+  findAll(@Req() req: any) {
+    const userId = req.user?.userId;
+    return this.campaignsService.findAll(userId);
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.campaignsService.findOne(+id);
+  @UseGuards(JwtAuthGuard)
+  findOne(@Req() req: any, @Param('id') id: string) {
+    const userId = req.user?.userId;
+    return this.campaignsService.findOneForUser(+id, userId);
   }
 
   @Patch(':id')
-  update(@Param('id') id: string, @Body() updateCampaignDto: Partial<Campaign>) {
-    return this.campaignsService.update(+id, updateCampaignDto);
+  @UseGuards(JwtAuthGuard)
+  update(@Req() req: any, @Param('id') id: string, @Body() updateCampaignDto: Partial<Campaign>) {
+    const userId = req.user?.userId;
+    return this.campaignsService.updateForUser(+id, updateCampaignDto, userId);
   }
 
   @Post('save-stage')
-  saveStage(@Body() body: { campaignName: string; stage: any }) {
-    return this.campaignsService.saveStageByName(body);
+  @UseGuards(JwtAuthGuard)
+  saveStage(@Req() req: any, @Body() body: { campaignName: string; stage: any }) {
+    const userId = req.user?.userId;
+    return this.campaignsService.saveStageByName({ ...body, userId });
   }
 
   @Post('run-once')
+  @UseGuards(JwtAuthGuard)
   async runOnce(
+    @Req() req: any,
     @Body()
     body: {
       campaignName: string;
@@ -53,7 +66,8 @@ export class CampaignsController {
     try {
       // Find the campaign by name
       console.log("Looking for campaign with name:", body.campaignName);
-      const campaign = await this.campaignsService.findByName(body.campaignName);
+      const userId = req.user?.userId;
+      const campaign = await this.campaignsService.findByName(body.campaignName, userId);
       console.log("Found campaign:", campaign ? { id: campaign.id, name: campaign.name } : null);
       
       if (!campaign) {

@@ -1,5 +1,6 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
+import cookieParser from 'cookie-parser';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -9,6 +10,8 @@ async function bootstrap() {
     origin: ['http://localhost:3000', 'http://localhost:5173', 'http://localhost:3333'], // Vite dev server and Docker frontend
     credentials: true,
   });
+  
+  app.use(cookieParser());
   
   await app.listen(3001);
   console.log('🚀 NestJS server running on http://localhost:3001');

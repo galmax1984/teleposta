@@ -7,17 +7,24 @@ import { campaigns, logs, type Campaign, type NewCampaign } from '../database/sc
 export class CampaignsService {
   constructor(@Inject('DATABASE_CONNECTION') private database: typeof db) {}
 
-  async findAll(): Promise<Campaign[]> {
+  async findAll(userId?: number): Promise<Campaign[]> {
+    if (userId) {
+      return this.database.select().from(campaigns).where(eq(campaigns.userId, userId));
+    }
     return this.database.select().from(campaigns);
   }
 
-  async findByName(name: string): Promise<Campaign | null> {
+  async findByName(name: string, userId?: number): Promise<Campaign | null> {
     console.log("=== FIND BY NAME SERVICE CALLED ===");
     console.log("Searching for campaign with name:", name);
     console.log("Name type:", typeof name);
     console.log("Name length:", name?.length);
     
-    const result = await this.database.select().from(campaigns).where(eq(campaigns.name, name)).limit(1);
+    let query = this.database.select().from(campaigns).where(eq(campaigns.name, name)).limit(1);
+    if (userId) {
+      query = this.database.select().from(campaigns).where(and(eq(campaigns.name, name), eq(campaigns.userId, userId))).limit(1);
+    }
+    const result = await query;
     console.log("Database query result:", result);
     console.log("Number of results:", result.length);
     
@@ -32,6 +39,16 @@ export class CampaignsService {
 
   async findOne(id: number): Promise<Campaign | null> {
     const result = await this.database.select().from(campaigns).where(eq(campaigns.id, id)).limit(1);
+    return result[0] || null;
+  }
+
+  async findOneForUser(id: number, userId?: number): Promise<Campaign | null> {
+    let result;
+    if (userId) {
+      result = await this.database.select().from(campaigns).where(and(eq(campaigns.id, id), eq(campaigns.userId, userId))).limit(1);
+    } else {
+      result = await this.database.select().from(campaigns).where(eq(campaigns.id, id)).limit(1);
+    }
     return result[0] || null;
   }
 
@@ -71,17 +88,28 @@ export class CampaignsService {
     return this.findOne(id);
   }
 
+  async updateForUser(id: number, updateCampaignDto: Partial<Campaign>, userId?: number): Promise<Campaign | null> {
+    if (userId) {
+      const owned = await this.findOneForUser(id, userId);
+      if (!owned) return null;
+    }
+    await this.database.update(campaigns).set(updateCampaignDto).where(eq(campaigns.id, id));
+    return this.findOne(id);
+  }
+
   async saveStageByName(params: {
     campaignName: string;
     stage: any; // allow flexible payload; server decides what to persist
+    userId?: number;
   }): Promise<Campaign> {
-    const existing = await this.findByName(params.campaignName);
+    const existing = await this.findByName(params.campaignName, params.userId);
 
     if (!existing) {
       // Create a minimal campaign row, default configs
       const inserted = await this.database.insert(campaigns).values({
         name: params.campaignName,
         description: null as any,
+        userId: params.userId as any,
         sourceType: 'Spreadsheet',
         sourceConfig: {},
         targetPlatform: 'Telegram',
@@ -91,7 +119,7 @@ export class CampaignsService {
       });
 
       // Retrieve the created row
-      const created = await this.findByName(params.campaignName);
+      const created = await this.findByName(params.campaignName, params.userId);
       if (!created) throw new Error('Failed to create campaign');
       return this.applyStageToCampaign(created.id, params.stage);
     }
