@@ -65,7 +65,7 @@ export class GoogleSheetsService {
     this.auth = new google.auth.JWT({
       email: credentials.client_email,
       key: privateKey,
-      scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'],
+      scopes: ['https://www.googleapis.com/auth/spreadsheets'],
     });
     
     // Create sheets client with OAuth2 auth only
@@ -279,10 +279,10 @@ export class GoogleSheetsService {
     spreadsheetId: string;
     sheetName: string;
     column?: string; // e.g., "A"
-    skipHeader?: boolean; // default true
+    skipHeader?: boolean; // default false
   }): Promise<string[]> {
     const columnLetter = (params.column || 'A').toUpperCase();
-    const skipHeader = params.skipHeader !== undefined ? params.skipHeader : true;
+    const skipHeader = params.skipHeader !== undefined ? params.skipHeader : false;
     try {
       const range = `${params.sheetName}!${columnLetter}:${columnLetter}`;
       const response = await this.sheets.spreadsheets.values.get({
@@ -299,6 +299,68 @@ export class GoogleSheetsService {
     } catch (error) {
       throw new Error(`Failed to get column ${columnLetter} values: ${error}`);
     }
+  }
+
+  // Find a random unposted row: content in columnA and empty in columnB
+  async pickRandomUnpostedRow(params: {
+    spreadsheetId: string;
+    sheetName: string;
+    contentColumn?: string; // default 'A'
+    statusColumn?: string; // default 'B'
+    skipHeader?: boolean; // default false
+  }): Promise<{ rowNumber: number; a1ContentCell: string } | null> {
+    const contentColumn = (params.contentColumn || 'A').toUpperCase();
+    const statusColumn = (params.statusColumn || 'B').toUpperCase();
+    const skipHeader = params.skipHeader !== undefined ? params.skipHeader : false;
+    // Fetch both columns in one request range like A:B to minimize calls
+    const startCol = contentColumn;
+    const endCol = statusColumn;
+    const range = `${params.sheetName}!${startCol}:${endCol}`;
+    console.log(`🔍 Fetching range: ${range}`);
+    const resp = await this.sheets.spreadsheets.values.get({
+      spreadsheetId: params.spreadsheetId,
+      range,
+      majorDimension: 'ROWS',
+    });
+    const rows: string[][] = resp.data.values || [];
+    console.log(`📊 Found ${rows.length} rows in spreadsheet`);
+    if (rows.length === 0) return null;
+    const dataRows = skipHeader && rows.length > 1 ? rows.slice(1) : rows;
+    console.log(`📋 Processing ${dataRows.length} data rows (skipHeader: ${skipHeader})`);
+    const candidates: number[] = [];
+    for (let i = 0; i < dataRows.length; i++) {
+      const row = dataRows[i] || [];
+      const content = row[0] ? String(row[0]).trim() : '';
+      const status = row[1] ? String(row[1]).trim() : '';
+      console.log(`Row ${i + 1}: content="${content}", status="${status}"`);
+      if (content && !status) {
+        // Convert dataRows index to actual sheet row number
+        const rowNumber = (skipHeader ? 2 : 1) + i;
+        candidates.push(rowNumber);
+        console.log(`✅ Added candidate: row ${rowNumber}`);
+      }
+    }
+    console.log(`🎯 Found ${candidates.length} unposted candidates: [${candidates.join(', ')}]`);
+    if (candidates.length === 0) return null;
+    const chosen = candidates[Math.floor(Math.random() * candidates.length)];
+    console.log(`🎲 Selected row ${chosen} (${contentColumn}${chosen})`);
+    return { rowNumber: chosen, a1ContentCell: `${contentColumn}${chosen}` };
+  }
+
+  async setCellValue(params: {
+    spreadsheetId: string;
+    sheetName: string;
+    a1Address: string; // e.g., "B12"
+    value: string;
+  }): Promise<void> {
+    await this.sheets.spreadsheets.values.update({
+      spreadsheetId: params.spreadsheetId,
+      range: `${params.sheetName}!${params.a1Address}`,
+      valueInputOption: 'USER_ENTERED',
+      requestBody: {
+        values: [[params.value]],
+      },
+    });
   }
 
   private findColumnIndex(headers: string[], columnName: string): number {

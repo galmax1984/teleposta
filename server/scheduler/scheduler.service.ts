@@ -85,9 +85,9 @@ export class SchedulerService implements OnModuleInit, OnModuleDestroy {
         return;
       }
       
-      // Extract configurations
-      const sourceConfig = campaign.sourceConfig as any;
-      const targetConfig = campaign.targetConfig as any;
+      // Extract configurations from fresh campaign data
+      const sourceConfig = fresh.sourceConfig as any;
+      const targetConfig = fresh.targetConfig as any;
       
       if (!sourceConfig?.googleSheets || !targetConfig?.telegram) {
         console.log('❌ Campaign configuration incomplete');
@@ -97,12 +97,24 @@ export class SchedulerService implements OnModuleInit, OnModuleDestroy {
       const sheetsConfig = sourceConfig.googleSheets;
       const telegramConfig = targetConfig.telegram;
 
-      // Read content from Google Sheets
+      // Read a random unposted row from column A where column B is empty
       const sheetsSvc = new GoogleSheetsService(sheetsConfig.credentials);
+      console.log(`📋 Looking for unposted rows in spreadsheet: ${sheetsConfig.spreadsheetId}, sheet: ${sheetsConfig.sheetName}`);
+      const pick = await sheetsSvc.pickRandomUnpostedRow({
+        spreadsheetId: sheetsConfig.spreadsheetId,
+        sheetName: sheetsConfig.sheetName,
+        contentColumn: 'A',
+        statusColumn: 'B',
+      });
+      if (!pick) {
+        console.log('❌ No unposted rows found');
+        return;
+      }
+      console.log(`✅ Found unposted row: ${pick.a1ContentCell}`);
       const textHtml = await sheetsSvc.getCellRichTextHTML(
         sheetsConfig.spreadsheetId,
         sheetsConfig.sheetName,
-        'A1',
+        pick.a1ContentCell,
       );
 
       if (!textHtml) {
@@ -127,8 +139,17 @@ export class SchedulerService implements OnModuleInit, OnModuleDestroy {
       if (resp?.ok) {
         console.log('✅ Message sent successfully');
         
+        // Mark row as posted in column B
+        const statusCell = `B${pick.rowNumber}`;
+        await sheetsSvc.setCellValue({
+          spreadsheetId: sheetsConfig.spreadsheetId,
+          sheetName: sheetsConfig.sheetName,
+          a1Address: statusCell,
+          value: 'posted',
+        });
+
         // Update campaign stats and next run time
-        await this.updateCampaignAfterRun(campaign);
+        await this.updateCampaignAfterRun(fresh);
       } else {
         console.log('❌ Telegram API failed:', resp?.description);
         
