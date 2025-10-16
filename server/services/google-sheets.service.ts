@@ -301,6 +301,23 @@ export class GoogleSheetsService {
     }
   }
 
+  // Read a plain cell value (no rich text parsing), returns empty string if not found
+  async getCellPlainValue(params: {
+    spreadsheetId: string;
+    sheetName: string;
+    a1Address: string; // e.g., "C12"
+  }): Promise<string> {
+    const range = `${params.sheetName}!${params.a1Address}`;
+    const response = await this.sheets.spreadsheets.values.get({
+      spreadsheetId: params.spreadsheetId,
+      range,
+      majorDimension: 'ROWS',
+    });
+    const rows: string[][] = response.data.values || [];
+    if (!rows.length || !rows[0]?.length) return '';
+    return String(rows[0][0] ?? '');
+  }
+
   // Find a random unposted row: content in columnA and empty in columnB
   async pickRandomUnpostedRow(params: {
     spreadsheetId: string;

@@ -122,19 +122,46 @@ export class SchedulerService implements OnModuleInit, OnModuleDestroy {
         return;
       }
 
-      // Post to Telegram
+      // Optional image URL from column C (same row)
+      const imageCell = `C${pick.rowNumber}`;
+      const imageUrl = await sheetsSvc.getCellPlainValue({
+        spreadsheetId: sheetsConfig.spreadsheetId,
+        sheetName: sheetsConfig.sheetName,
+        a1Address: imageCell,
+      });
+
+      // Post to Telegram (sendPhoto if image URL is present, otherwise sendMessage)
       const base = `https://api.telegram.org/bot${encodeURIComponent(telegramConfig.botToken)}`;
-      const resp = await fetch(`${base}/sendMessage`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          chat_id: telegramConfig.chatIdOrUsername, 
-          text: textHtml,
-          parse_mode: telegramConfig.parseMode || 'HTML',
-          disable_web_page_preview: telegramConfig.disableWebPagePreview,
-          message_thread_id: telegramConfig.messageThreadId,
-        }),
-      }).then((r) => r.json());
+      let resp: any;
+      if (imageUrl && imageUrl.trim().length > 0) {
+        console.log(`🖼️ Sending photo for row ${pick.rowNumber}: ${imageUrl}`);
+        // Caption limited to 1024 chars in Telegram
+        const caption = textHtml.length > 1024 ? textHtml.slice(0, 1021) + '…' : textHtml;
+        resp = await fetch(`${base}/sendPhoto`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: telegramConfig.chatIdOrUsername,
+            photo: imageUrl,
+            caption,
+            parse_mode: telegramConfig.parseMode || 'HTML',
+            disable_notification: false,
+            message_thread_id: telegramConfig.messageThreadId,
+          }),
+        }).then((r) => r.json());
+      } else {
+        resp = await fetch(`${base}/sendMessage`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            chat_id: telegramConfig.chatIdOrUsername, 
+            text: textHtml,
+            parse_mode: telegramConfig.parseMode || 'HTML',
+            disable_web_page_preview: telegramConfig.disableWebPagePreview,
+            message_thread_id: telegramConfig.messageThreadId,
+          }),
+        }).then((r) => r.json());
+      }
 
       if (resp?.ok) {
         console.log('✅ Message sent successfully');
