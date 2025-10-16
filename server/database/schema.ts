@@ -16,11 +16,25 @@ export const settings = mysqlTable('settings', {
   updatedAt: timestamp('updated_at').defaultNow().onUpdateNow().notNull(),
 });
 
+// Users table for authentication
+export const users = mysqlTable('users', {
+  id: int('id').primaryKey().autoincrement(),
+  provider: varchar('provider', { length: 32 }).notNull(), // 'google'
+  providerUserId: varchar('provider_user_id', { length: 255 }).notNull(),
+  email: varchar('email', { length: 255 }),
+  name: varchar('name', { length: 255 }),
+  avatarUrl: text('avatar_url'),
+  role: varchar('role', { length: 32 }).default('user'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().onUpdateNow().notNull(),
+});
+
 // Campaigns table for managing posting campaigns
 export const campaigns = mysqlTable('campaigns', {
   id: int('id').primaryKey().autoincrement(),
   name: varchar('name', { length: 255 }).notNull(),
   description: text('description'),
+  userId: int('user_id').references(() => users.id),
   sourceType: varchar('source_type', { length: 50 }).notNull(),
   sourceConfig: json('source_config').notNull(),
   targetPlatform: varchar('target_platform', { length: 50 }).notNull(),
@@ -87,6 +101,8 @@ export type Setting = typeof settings.$inferSelect;
 export type NewSetting = typeof settings.$inferInsert;
 export type Campaign = typeof campaigns.$inferSelect;
 export type NewCampaign = typeof campaigns.$inferInsert;
+export type User = typeof users.$inferSelect;
+export type NewUser = typeof users.$inferInsert;
 export type Post = typeof posts.$inferSelect;
 export type NewPost = typeof posts.$inferInsert;
 export type Schedule = typeof schedules.$inferSelect;

@@ -7,6 +7,7 @@ import { DatabaseModule } from './database/database.module';
 import { GoogleSheetsModule } from './google-sheets/google-sheets.module';
 import { TelegramModule } from './telegram/telegram.module';
 import { SchedulerModule } from './scheduler/scheduler.module';
+import { AuthModule } from './auth/auth.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { SchedulerModule } from './scheduler/scheduler.module';
     GoogleSheetsModule,
     TelegramModule,
     SchedulerModule,
+    AuthModule,
   ],
 })
 export class AppModule {}
