@@ -2,10 +2,11 @@ import { Controller, Get, Req, Res, UseGuards } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { GoogleAuthGuard } from './google.guard';
 import { Response } from 'express';
+import { JwtService } from '@nestjs/jwt';
 
 @Controller('api/auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(private readonly authService: AuthService, private readonly jwtService: JwtService) {}
 
   @Get('google')
   @UseGuards(GoogleAuthGuard)
@@ -33,10 +34,17 @@ export class AuthController {
     const token = req.cookies?.auth_token;
     if (!token) return { authenticated: false };
     try {
-      return { authenticated: true };
+      const payload = this.jwtService.verify(token, { secret: process.env.JWT_SECRET || 'dev_jwt_secret' });
+      return { authenticated: true, user: { id: payload.sub, email: payload.email, name: payload.name } };
     } catch {
       return { authenticated: false };
     }
+  }
+
+  @Get('logout')
+  async logout(@Res() res: Response) {
+    res.clearCookie('auth_token', { httpOnly: true, sameSite: 'lax', secure: false });
+    res.status(200).json({ success: true });
   }
 }
 
